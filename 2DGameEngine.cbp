@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="2DGame_Engine" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/testGame" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="../Game_Engine" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-std=c++17" />
+					<Add option="-m32" />
+					<Add option="-g" />
+					<Add directory="include" />
+				</Compiler>
+				<Linker>
+					<Add option="-O2" />
+					<Add option="-m32" />
+				</Linker>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/sdl prueba2" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="./" />
+				<Option object_output="obj/Release/" />
+				<Option type="0" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+					<Add directory="include" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-m32" />
+			<Add option="-g" />
+			<Add directory="sdl2/include" />
+			<Add directory="box2d/include" />
+		</Compiler>
+		<Linker>
+			<Add option="-m32" />
+			<Add option="-lmingw32" />
+			<Add option="-lSDL2main" />
+			<Add option="-lSDL2" />
+			<Add option="-lSDL2_image" />
+			<Add option="-lbox2d" />
+			<Add library="mingw32" />
+			<Add library="user32" />
+			<Add library="gdi32" />
+			<Add library="winmm" />
+			<Add library="dxguid" />
+			<Add directory="sdl2/lib" />
+			<Add directory="box2d/lib" />
+		</Linker>
+		<ExtraCommands>
+			<Add after="XCOPY $(#sdl2)\bin\*.dll $(TARGET_OUTPUT_DIR) /D /Y" />
+		</ExtraCommands>
+		<Unit filename="include/Animation.h" />
+		<Unit filename="include/Audio_System.h" />
+		<Unit filename="include/Camera.h" />
+		<Unit filename="include/Component.h" />
+		<Unit filename="include/Converter.h" />
+		<Unit filename="include/Fonts.h" />
+		<Unit filename="include/Game_Config.h" />
+		<Unit filename="include/Input.h" />
+		<Unit filename="include/Physic_Engine.h" />
+		<Unit filename="include/Physics.h" />
+		<Unit filename="include/Player.h" />
+		<Unit filename="include/Quatree.h" />
+		<Unit filename="include/Render.h" />
+		<Unit filename="include/Render_DrawSystem.h" />
+		<Unit filename="include/Scene.h" />
+		<Unit filename="include/Scene_Loader.h" />
+		<Unit filename="include/Screen.h" />
+		<Unit filename="include/TileMap.h" />
+		<Unit filename="include/Timer.h" />
+		<Unit filename="include/Transform_System.h" />
+		<Unit filename="include/hash_support.h" />
+		<Unit filename="include/json.hpp" />
+		<Unit filename="include/math_structs.h" />
+		<Unit filename="include/miniaudio.h" />
+		<Unit filename="include/pugiconfig.hpp" />
+		<Unit filename="include/pugixml.hpp" />
+		<Unit filename="include/stb_vorbis.h" />
+		<Unit filename="include/texture.h" />
+		<Unit filename="include/vector2.h" />
+		<Unit filename="main.cpp" />
+		<Unit filename="src/Animation.cpp" />
+		<Unit filename="src/Audio_System.cpp" />
+		<Unit filename="src/Camera.cpp" />
+		<Unit filename="src/Converter.cpp" />
+		<Unit filename="src/Fonts.cpp" />
+		<Unit filename="src/Game_Config.cpp" />
+		<Unit filename="src/Input.cpp" />
+		<Unit filename="src/Physic_Engine.cpp" />
+		<Unit filename="src/Physics.cpp" />
+		<Unit filename="src/Player.cpp" />
+		<Unit filename="src/Quatree.cpp" />
+		<Unit filename="src/Render.cpp" />
+		<Unit filename="src/Render_DrawSystem.cpp" />
+		<Unit filename="src/Scene.cpp" />
+		<Unit filename="src/Scene_Loader.cpp" />
+		<Unit filename="src/Screen.cpp" />
+		<Unit filename="src/TileMap.cpp" />
+		<Unit filename="src/Timer.cpp" />
+		<Unit filename="src/Transform_System.cpp" />
+		<Unit filename="src/math_structs.cpp" />
+		<Unit filename="src/miniaudio.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/pugixml.cpp" />
+		<Unit filename="src/stb_vorbis.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/texture.cpp" />
+		<Unit filename="src/vector2.cpp" />
+		<Extensions />
+	</Project>
+</CodeBlocks_project_file>

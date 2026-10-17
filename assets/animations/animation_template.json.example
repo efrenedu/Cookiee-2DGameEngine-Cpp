@@ -1,0 +1,57 @@
+{
+  "Animations_Count":1,
+  "Texture_Source":"test.png",
+  "Direction_Animations":"Horizontal",
+  "Animations":[
+    {
+	   "Animation_Id":0,
+	   "Frame_Count":3,
+	   "First_Sprite":{"Row":0,"Column":0},
+	   "Frames":{
+	      "Frame_0":0.2,
+		  "Frame_1":0.2,
+		  "Frame_2":0.2
+	   },
+	   "Transitions":[
+         {
+		    "Next_Animation":1,
+			"Count_Conditions":1,
+			"Conditions":[
+			  {
+			     "Param_Id":"Vel X",
+				 "Value_Condition":0.1,
+				 "Verification_Type":"Greater"
+			  }
+			]
+		 }
+	   ],
+       "Loop":true
+	},
+	{
+	   "Animation_Id":1,
+	   "Frame_Count":3,
+	   "First_Sprite":{"Row":4,"Column":0},
+	   "Frames":{
+	      "Frame_0":0.2,
+		  "Frame_1":0.2,
+		  "Frame_2":0.2
+	   },
+	   "Transitions":[
+         {
+		    "Next_Animation":0,
+			"Count_Conditions":1,
+		    "Conditions":[
+			   {
+			     "Param_Id":"Vel X",
+				 "Value_Condition":0.1,
+				 "Verification_Type":"Lower"
+			   }
+			
+			]
+		 }
+	   ],
+       "Loop":true
+	}
+
+  ]
+}

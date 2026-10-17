@@ -1,0 +1,28 @@
+{
+    "Audio_Config": {
+        "Music_Volume": "1.000000",
+        "Sfx_Volume": "1.000000"
+    },
+    "Input_Config": {
+        "Action_Key": "29",
+        "Action_Second_Key": "27",
+        "Down_Key": "81",
+        "Interact_Key": "6",
+        "Jump_Key": "44",
+        "Left_Key": "80",
+        "Right_Key": "79",
+        "Up_Key": "82"
+    },
+    "Scenes": {
+        "Scene_0": "assets/scenes/test.tmx",
+        "Scene_Count": "1"
+    },
+    "Windows_Config": {
+        "FullScreen": "false",
+        "Height": "600",
+        "Target_SizeHeight": "240",
+        "Target_SizeWidth": "320",
+        "Title": "My Game",
+        "Width": "600"
+    }
+}
