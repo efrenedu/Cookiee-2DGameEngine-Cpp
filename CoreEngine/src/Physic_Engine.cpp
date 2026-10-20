@@ -16,12 +16,17 @@ void contactListener::BeginContact(b2Contact* contact){
    b2Fixture* fixtureB=contact->GetFixtureB();
    uint32_t data_fixtureA=static_cast<uint32_t>(fixtureA->GetUserData().pointer);
    uint32_t data_fixtureB=static_cast<uint32_t>(fixtureB->GetUserData().pointer);
-   bool sensorA=(data_fixtureA & 1)!=0;
-   bool sensorB=(data_fixtureB & 1)!=0;
-   uint16_t entityA= static_cast<uint16_t>(data_fixtureA>>1);
-   uint16_t entityB= static_cast<uint16_t>(data_fixtureB>>1);
+   int8_t id_fixtureA=((data_fixtureA>>16)&0xFF);
+   int8_t id_fixtureB=((data_fixtureB>>16)&0xFF);
+   bool sensorA=(id_fixtureA==-1)?false:true;
+   bool sensorB=(id_fixtureB==-1)?false:true;
+   uint16_t entityA= static_cast<uint16_t>(data_fixtureA &0xFFFF);
+   uint16_t entityB= static_cast<uint16_t>(data_fixtureB & 0xFFFF);
+   b2Filter filterA=fixtureA->GetFilterData();
+   b2Filter filterB=fixtureB->GetFilterData();
+
    if(sensorA || sensorB ){
-       engine_sys->add_TriggerEvent(entityA,entityB,true);
+      engine_sys->add_TriggerEvent(entityA,entityB,true);
    }
    else{
       b2WorldManifold worldManifold;
@@ -37,10 +42,12 @@ void contactListener::EndContact(b2Contact* contact){
    b2Fixture* fixtureB=contact->GetFixtureB();
    uint32_t data_fixtureA=static_cast<uint32_t>(fixtureA->GetUserData().pointer);
    uint32_t data_fixtureB=static_cast<uint32_t>(fixtureB->GetUserData().pointer);
-   bool sensorA=(data_fixtureA & 1)!=0;
-   bool sensorB=(data_fixtureB & 1)!=0;
-   uint16_t entityA= static_cast<uint16_t>(data_fixtureA>>1);
-   uint16_t entityB= static_cast<uint16_t>(data_fixtureB>>1);
+   int8_t id_fixtureA=((data_fixtureA>>16)&0xFF);
+   int8_t id_fixtureB=((data_fixtureB>>16)&0xFF);
+   bool sensorA=(id_fixtureA==-1)?false:true;
+   bool sensorB=(id_fixtureB==-1)?false:true;
+   uint16_t entityA= static_cast<uint16_t>(data_fixtureA &0xFFFF);
+   uint16_t entityB= static_cast<uint16_t>(data_fixtureB & 0xFFFF);
 
    if(sensorA || sensorB ){
        engine_sys->add_TriggerEvent(entityA,entityB,false);
@@ -61,10 +68,12 @@ void contactListener::PreSolve(b2Contact* contact, const b2Manifold* oldManifold
     contact->GetWorldManifold(&worldManifold);
     uint32_t data_fixtureA=static_cast<uint32_t>(fixtureA->GetUserData().pointer);
     uint32_t data_fixtureB=static_cast<uint32_t>(fixtureB->GetUserData().pointer);
-    bool sensorA=(data_fixtureA & 1)!=0;
-    bool sensorB=(data_fixtureB & 1)!=0;
-    uint16_t entityA= static_cast<uint16_t>(data_fixtureA>>1);
-    uint16_t entityB= static_cast<uint16_t>(data_fixtureB>>1);
+    int8_t id_fixtureA=((data_fixtureA>>16)&0xFF);
+    int8_t id_fixtureB=((data_fixtureB>>16)&0xFF);
+    bool sensorA=(id_fixtureA==-1)?false:true;
+    bool sensorB=(id_fixtureB==-1)?false:true;
+    uint16_t entityA= static_cast<uint16_t>(data_fixtureA &0xFFFF);
+    uint16_t entityB= static_cast<uint16_t>(data_fixtureB & 0xFFFF);
 
 }
 
@@ -232,12 +241,14 @@ void Physic_Engine_System::update(Scene* target_scene){
       Physic_Material_Data* material=physic_material_sys->get_material(collider->material_id);
       while(fixtures!=NULL){
          uint32_t data_fixture=static_cast<uint32_t>(fixtures->GetUserData().pointer);
-         bool is_sensor=(data_fixture & 1)!=0;
+         int8_t id_fixture=((data_fixture>>16)&0xFF);
+         bool is_sensor=(id_fixture==-1)?false:true;
+
          if(is_sensor){
            b2Filter filter_val=fixtures->GetFilterData();
-           filter_val.maskBits=collider->sensor_mask;
-           filter_val.categoryBits=collider->category_bits_sensor;
-           fixtures->SetFilterData(filter_val);
+        //   filter_val.maskBits=collider->sensor_mask;
+        //   filter_val.categoryBits=collider->category_bits_sensor;
+          // fixtures->SetFilterData(filter_val);
          }
          else{
            fixtures->SetSensor(collider->is_trigger);
@@ -375,7 +386,7 @@ void Physic_Engine_System::build_fixture(b2Body* bd,Physic_Material_System* phys
          restitution=material->restitution;
          friction=material->friction;
     }
-    bool is_sensor=col->has_sensor;
+    fixturedef.isSensor=col->is_trigger;
     switch(col->collider_type){
 
         case FIGURE_TYPE::FIGURE_SQUARE:{
@@ -389,7 +400,6 @@ void Physic_Engine_System::build_fixture(b2Body* bd,Physic_Material_System* phys
                density=mass_body/area;
            }
            fixturedef.shape=&Boxshape;
-           fixturedef.isSensor=col->is_trigger;
            break;
         }
         case FIGURE_TYPE::FIGURE_CIRCLE:{
@@ -397,7 +407,6 @@ void Physic_Engine_System::build_fixture(b2Body* bd,Physic_Material_System* phys
             shape_circle.m_radius=radius;
             shape_circle.m_p=offsetCollider;
             fixturedef.shape=&shape_circle;
-            fixturedef.isSensor=is_sensor;
             float pow_radius=Math_G::Pow(2,radius);
             float area=MATH_CONSTANTS::PI_VAL*pow_radius;
             if(mass_body!=0.0f && area!=0.0f){
@@ -406,31 +415,40 @@ void Physic_Engine_System::build_fixture(b2Body* bd,Physic_Material_System* phys
             break;
         }
         case FIGURE_TYPE::FIGURE_POLYGON:{
+           uint8_t count_vertexs=col->vertexs.size();
+           b2Vec2 vertexs[count_vertexs];
+           for(uint8_t i=0;i<count_vertexs;i++){
+               Vertex_Polygon vertex=col->vertexs[i];
+               float px=Converter::pixelToMetter(vertex.point_x);
+               float py=Converter::pixelToMetter(vertex.point_y);
+               vertexs[i].Set(px,py);
+           }
+           float area=0.0;
+           if(count_vertexs>=3){
+              for(uint8_t i=0;i<count_vertexs;i++){
+                 uint8_t pair_index=(i+1)%count_vertexs;
+                 Vertex_Polygon vertex=col->vertexs[i];
+                 Vertex_Polygon vertexpair=col->vertexs[pair_index];
+                 area+=(vertex.point_x*vertexpair.point_y)-(vertexpair.point_x*vertex.point_y);
+              }
+               area=std::abs(area)*0.5;
+           }
+
+           Boxshape.Set(vertexs,count_vertexs);
+
+           if(mass_body!=0.0f && area!=0.0f){
+                density=mass_body/area;
+           }
+           col->vertexs.clear();
+           fixturedef.shape=&Boxshape;
            break;
         }
     }
-    if(col->has_sensor){
-        density=density/2.0f;
+    std::vector<fixture_Data> add_fixtures=col->Additional_fixtures;
+    uint8_t count_additional_fixtures=add_fixtures.size();
+    if(add_fixtures.size()>0){
+        density=density/(float)static_cast<uint16_t>(count_additional_fixtures);
     }
-   /*
-    else if(fig.get_type()==FIGURE_TYPES::POLYGON){
-        vector<Vector2>pts=fig.get_vertices();
-        b2Vec2 vertexs[pts.size()];
-        vector<Vector2>::iterator it;
-        int index=0;
-        int count_vertexs=pts.size();
-        for(it=pts.begin();it!=pts.end();it++){
-           Vector2 p=*it;
-           p.x=Converter::pixelToMetter(p.x);
-           p.y=Converter::pixelToMetter(p.y);
-           vertexs[index].Set(p.x,p.y);
-           index++;
-        }
-        shape.Set(vertexs,count_vertexs);
-        fixturedef.shape=&shape;
-        fixturedef.isSensor=is_sensor;
-    }
-    */
 
     //Main Collider
     fixturedef.density=density;
@@ -438,33 +456,34 @@ void Physic_Engine_System::build_fixture(b2Body* bd,Physic_Material_System* phys
     fixturedef.restitution=restitution;
     fixturedef.filter.categoryBits=col->category_bits;
     fixturedef.filter.maskBits=col->collider_mask;
-   // fixturedef.filter.groupIndex=col->get_layer_Group();
-    uint32_t packed_collider_data=(static_cast<uint32_t>(index_entity)<<1)|0;
+    uint32_t packed_collider_data=(static_cast<uint32_t>(index_entity) & 0xFFFF)|((static_cast<uint32_t>(static_cast<int8_t>(-1))& 0xFF)<<16);
+
     fixturedef.userData.pointer=static_cast<uintptr_t>(packed_collider_data);
     bd->CreateFixture(&fixturedef);
+    for(uint8_t i=0;i<count_additional_fixtures;i++){
+        fixture_Data target_fixture=add_fixtures[i];
+        b2FixtureDef target_fixture_defs;
 
-    if(col->has_sensor){
-        //Sensor Collider
-        b2FixtureDef sensor_defs;
-        b2Vec2 offsetSensor(Converter::pixelToMetter(col->offset_x_sensor),Converter::pixelToMetter(col->offset_y_sensor));
-        b2CircleShape shape_sensor;
-        float radius_sensor=Converter::pixelToMetter(col->radius_sensor);
-        shape_sensor.m_radius=radius_sensor;
-        shape_sensor.m_p=offsetSensor;
-        sensor_defs.shape=&shape_sensor;
-        sensor_defs.isSensor=true;
-        float density_sensor=0.0f;
-        float pow_radius=Math_G::Pow(2,radius_sensor);
+        b2Vec2 target_offset(Converter::pixelToMetter(target_fixture.offsetX),Converter::pixelToMetter(target_fixture.offsetY));
+        b2CircleShape target_shape;
+        float target_radius=Converter::pixelToMetter(target_fixture.radius);
+        target_shape.m_radius=target_radius;
+        target_shape.m_p=target_offset;
+        target_fixture_defs.shape=&target_shape;
+        target_fixture_defs.isSensor=true;
+        float target_density=0.0f;
+        float pow_radius=Math_G::Pow(2,target_radius);
         float area=MATH_CONSTANTS::PI_VAL*pow_radius;
         if(mass_body!=0.0f && area!=0.0f){
-            density_sensor=(mass_body/area)/2.0;
+            target_density=(mass_body/area)/(float)static_cast<uint16_t>(count_additional_fixtures);
         }
-        sensor_defs.density=density_sensor;
-        sensor_defs.filter.categoryBits=col->category_bits_sensor;
-        sensor_defs.filter.maskBits=col->sensor_mask;
-        uint32_t packed_sensor_data=(static_cast<uint32_t>(index_entity)<<1)|1;
-        sensor_defs.userData.pointer=static_cast<uintptr_t>(packed_sensor_data);
-        bd->CreateFixture(&sensor_defs);
+        target_fixture_defs.density=target_density;
+        target_fixture_defs.filter.categoryBits=target_fixture.category_bits_fixture;
+        target_fixture_defs.filter.maskBits=target_fixture.mask_fixture;
+
+        uint32_t packed_targetFixture_data=(static_cast<uint32_t>(index_entity) & 0xFFFF)|((static_cast<uint32_t>(static_cast<int8_t>(i))& 0xFF)<<16);
+        target_fixture_defs.userData.pointer=static_cast<uintptr_t>(packed_targetFixture_data);
+        bd->CreateFixture(&target_fixture_defs);
     }
 
 

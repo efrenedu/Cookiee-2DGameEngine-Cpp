@@ -31,7 +31,15 @@ enum Collision_Category:uint16_t{
 
 //Type of Joints
 enum JOINT_TYPES:uint8_t{
-  DISTANCE_JOINT=0,REVOLUTE_JOINT=1,PRISMATIC_JOINT=2,PULLEY_JOINT=3,WELD_JOINT=4,
+  DISTANCE_JOINT=0,REVOLUTE_JOINT=1,PRISMATIC_JOINT=2,PULLEY_JOINT=3,WELD_JOINT=4,JOINT_INVALID=5
+};
+enum Joint_Flags:uint8_t{
+   JointFlag_None=0,
+   JointFlag_Distance=1<<0,
+   JointFlag_Revolute=1<<1,
+   JointFlag_Prismatic=1<<2,
+   JointFlag_Weld=1<<3,
+   JointFlag_Pulley=1<<4
 };
 
 //Store the Physicis Material Data
@@ -66,34 +74,37 @@ struct BoxGeometry{
    float width;
    float height;
 };
-//Data of a Polygon Shape
-struct PolygonGeometry{
-   uint16_t vertex_count;
-   uint16_t polygonId;
+
+struct Vertex_Polygon{
+   float point_x;
+   float point_y;
+};
+
+struct fixture_Data{
+   uint16_t mask_fixture;
+   uint16_t category_bits_fixture;
+   float offsetX;
+   float offsetY;
+   float radius;
+   bool is_sensor;
 };
 
 //Store the data of Collider
 struct Collider_Data{
-     uint16_t collider_mask;
-     uint16_t category_bits;
-     uint16_t sensor_mask;
-     uint16_t category_bits_sensor;
-     float offset_x;
-     float offset_y;
-     float offset_x_sensor;
-     float offset_y_sensor;
-     float radius_sensor;
      union{
         BoxGeometry box;
         CircleGeometry circle;
-        PolygonGeometry polygon;
      }shape;
+     std::vector<Vertex_Polygon> vertexs;
+     std::vector<fixture_Data> Additional_fixtures;
+     uint16_t collider_mask;
+     uint16_t category_bits;
+     float offset_x;
+     float offset_y;
      uint8_t material_id;
      uint8_t padding;
      uint8_t collider_type;
      bool is_trigger;
-     bool has_sensor;
-
 };
 
 //Collider System of Entities
@@ -101,7 +112,7 @@ struct Collider_System{
 public:
     void free_system();
     void reserve_memory(uint16_t count_colliders,uint16_t count_entities,uint16_t fillval);
-    void register_collider(uint16_t id,uint8_t mat_id,bool has_sensor,bool trigger, std::string mask_col_str,std::string mask_sensor_str,std::string bits_str,std::string bits_sensor_str,std::string fig_t,float radius,float radius_sensor, float w,float h,float offsetX,float offsetY,float offsetx_sensor,float offsety_sensor,float padding);
+    void register_collider(uint16_t id,uint8_t mat_id,bool trigger, uint16_t mask_col_str,uint16_t bits_str,std::string fig_t,float radius,float w,float h,float offsetX,float offsetY,float padding,std::vector<Vertex_Polygon> vertex_list,std::vector<fixture_Data> add_fixtures );
     Collider_Data* get_collider(uint16_t id);
 private:
     std::vector<Collider_Data>list_colliders;
@@ -113,6 +124,7 @@ private:
 //Esscential Data of Joints
 struct Joint_Header{
   b2Joint* b2jointPtr=nullptr;
+  uint8_t mask_joint;
   uint16_t entityA;
   uint16_t entityB;
   uint16_t jointId;
@@ -177,12 +189,12 @@ public:
     void reserve_memory(uint16_t count_joints,uint16_t count_entities,uint16_t fillval);
     void unregister_joint(uint16_t id,uint8_t joint_type);
     void register_distance_joint(uint16_t id,float min_dist,float max_dist,float stiff,float dampm,float anchorA_X,float anchorA_Y,float anchorB_X,float anchorB_Y);
-    void register_prismatic_joint(uint16_t id);
-    void register_revolution_joint(uint16_t id);
+    void register_prismatic_joint(uint16_t id,float anchor_x,float anchor_y,float axis_x,float axis_y,float lower_translation,float upper_translation,float motor_spd,float max_motor_Force,bool use_motor,bool use_limits);
+    void register_revolute_joint(uint16_t id,float anchor_x,float anchor_y,float lower_angle,float upper_angle,float motor_spd,float max_motor_torque,bool use_motor,bool use_limits);
     void register_pulley_joint(uint16_t id);
     void register_weld_joint(uint16_t id);
     Distance_Join_Data& get_distance_joint(uint16_t id);
-    Revolute_Join_Data& get_revolution_joint(uint16_t id);
+    Revolute_Join_Data& get_revolute_joint(uint16_t id);
     Prismatic_Join_Data& get_prismatic_joint(uint16_t id);
     Weld_Join_Data& get_weld_joint(uint16_t id);
     Pulley_Join_Data& get_pulley_joint(uint16_t id);
@@ -196,7 +208,7 @@ private:
     std::vector<uint16_t> EntitytoDenseDistance;
     std::vector<uint16_t> EntitytoDensePrismatic;
     std::vector<uint16_t> EntitytoDensePulley;
-    std::vector<uint16_t> EntitytoDenseRevolution;
+    std::vector<uint16_t> EntitytoDenseRevolute;
     std::vector<uint16_t> EntitytoDenseWeld;
 };
 

@@ -186,8 +186,27 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
           break;
        }
        case components_types::COLLIDER_COMP:{
+          uint8_t count_addiontalFixtures=props.get_uint("Count_Add_Fixtures",0);
+          std::vector<fixture_Data> additional_fixtures;
+          additional_fixtures.reserve(count_addiontalFixtures);
+          for(uint8_t i=0;i<count_addiontalFixtures;i++){
+             fixture_Data new_fixture;
+             std::string index_str=to_string(static_cast<uint16_t>(i));
+             std::string mask_fixture_str=props.get_string("Fixture_Mask_"+index_str,"");
+             std::vector<std::string> bit_fixture_list=Converter::str_toVect(props.get_string("Fixture_Category_Bits_"+index_str,""));
+             new_fixture.mask_fixture= get_LayerCollider_mask(mask_fixture_str.c_str());
+             uint16_t category_bits_fixture=0;
+             for(std::string value:bit_fixture_list){
+                  category_bits_fixture|=get_LayerCollider_mask(value.c_str());
+             }
+             new_fixture.category_bits_fixture=category_bits_fixture;
+             new_fixture.radius=props.get_float("Fixture_Radius_"+index_str,0);
+             new_fixture.offsetX=props.get_float("Fixture_OffsetX_"+index_str,0);
+             new_fixture.offsetY=props.get_float("Fixture_OffsetY_"+index_str,0);
+             new_fixture.is_sensor=props.get_bool("Fixture_Sensor_"+index_str,false);
+             additional_fixtures.push_back(new_fixture);
+          }
           float radius=props.get_float("radius_collider",0.0);
-          float radius_sensor=props.get_float("radius_sensor",0.0);
           float w=props.get_float("width_collider",0.0);
           float h=props.get_float("height_collider",0.0);
           float offsetx=props.get_float("offset_x_collider",0.0);
@@ -195,16 +214,25 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
           float padding=props.get_float("padding_collider",0.0);
           int8_t mat_id=props.get_int("physic_material",0);
           bool is_trigger=props.get_bool("is_trigger",false);
-          bool has_sensor=props.get_bool("has_collider_sensor",false);
-          float sensor_radious=props.get_float("sensor_radious",0.0);
-          float offsetx_sensor=props.get_float("offset_x_sensor",0.0);
-          float offsety_sensor=props.get_float("offset_y_sensor",0.0);
-          std::string mask_sensor=props.get_string("sensor_mask","");
-          std::string bits_sensor=props.get_string("sensor_categoryBits","");
-          std::string mask_collision=props.get_string("collider_mask","");
-          std::string bit_collision=props.get_string("collider_categoryBits","");
+          uint16_t mask_collision=get_LayerCollider_mask(props.get_string("collider_mask","").c_str());
+          uint16_t bits=0;
+          std::vector<std::string> bit_list=Converter::str_toVect(props.get_string("collider_categoryBits",""));
+          for(std::string val:bit_list){
+             bits|=get_LayerCollider_mask(val.c_str());
+          }
           std::string fig_type=props.get_string("figure_type","");
-          collider_sys.register_collider(id_entity,mat_id,has_sensor,is_trigger,mask_collision,mask_sensor,bit_collision,bits_sensor,fig_type,radius,radius_sensor,w,h,offsetx,offsety,offsetx_sensor,offsety_sensor,padding);
+          std::vector<Vertex_Polygon> vertexs;
+          uint8_t vertex_count=props.get_uint("Vertex_Collider_Count",0);
+          vertexs.reserve(vertex_count);
+          for(uint8_t i=0;i<vertex_count;i++){
+            std::string index_str=to_string(static_cast<uint16_t>(i));
+            Vertex_Polygon vertex;
+            vertex.point_x=props.get_float("Vertex_Collider_PointX_"+index_str,0.0);
+            vertex.point_y=props.get_float("Vertex_Collider_PointY_"+index_str,0.0);
+            vertexs.push_back(vertex);
+          }
+
+          collider_sys.register_collider(id_entity,mat_id,is_trigger,mask_collision,bits,fig_type,radius,w,h,offsetx,offsety,padding,vertexs,additional_fixtures);
           break;
        }
         case components_types::RIGIDBODY_COMP:{
@@ -225,7 +253,61 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
           break;
        }
        case components_types::JOINT_COMP:{
-           std::cout<<"joint detected"<<std::endl;
+           uint8_t joint_count=props.get_uint("Joint_Count",0);
+           for(uint8_t i=0;i<joint_count;i++){
+              std::string index_str=to_string(static_cast<uint16_t>(i));
+              uint8_t joint_t=get_JointType(props.get_string("joint_type_"+index_str,"").c_str());
+              switch(joint_t){
+                 case DISTANCE_JOINT:{
+                    float min_dist=props.get_float("Min_Distance_Joint_"+index_str,0.0);
+                    float max_dist=props.get_float("Max_Distance_Joint_"+index_str,0.0);
+                    float stiff=props.get_float("Stiffness_Joint_"+index_str,0.0);
+                    float damp=props.get_float("Damping_Joint_"+index_str,0.0);
+                    float anchorA_x=props.get_float("AnchorA_X_Joint_"+index_str,0.0);
+                    float anchorA_y=props.get_float("AnchorA_Y_Joint_"+index_str,0.0);
+                    float anchorB_x=props.get_float("AnchorB_X_Joint_"+index_str,0.0);
+                    float anchorB_y=props.get_float("AnchorB_Y_Joint_"+index_str,0.0);
+                    join_sys.register_distance_joint(id_entity,min_dist,max_dist,stiff,damp,anchorA_x,anchorA_y,anchorB_x,anchorB_y);
+                    break;
+                 }
+                 case REVOLUTE_JOINT:{
+                    float anchor_x=props.get_float("AnchorX_Joint_"+index_str,0.0);
+                    float anchor_y=props.get_float("AnchorY_Joint_"+index_str,0.0);
+                    float motor_speed=props.get_float("Motor_Speed_Joint_"+index_str,0.0);
+                    float max_torque=props.get_float("Max_Torque_Joint_"+index_str,0.0);
+                    float lower_angle=props.get_float("Lower_Angle_Joint_"+index_str,0.0);
+                    float upper_angle=props.get_float("Upper_Angle_Joint_"+index_str,0.0);
+                    bool enable_limits=props.get_bool("Enable_Limits_Joint_"+index_str,true);
+                    bool enable_motor=props.get_bool("Enable_Motor_Joint_"+index_str,true);
+                    join_sys.register_revolute_joint(id_entity,anchor_x,anchor_y,lower_angle,upper_angle,motor_speed,max_torque,enable_motor,enable_limits);
+                    break;
+                 }
+                 case PRISMATIC_JOINT:{
+                    float anchor_x=props.get_float("AnchorX_Joint_"+index_str,0.0);
+                    float anchor_y=props.get_float("AnchorY_Joint_"+index_str,0.0);
+                    float motor_speed=props.get_float("Motor_Speed_Joint_"+index_str,0.0);
+                    float max_force=props.get_float("Max_Force_Joint_"+index_str,0.0);
+                    float lower_translation=props.get_float("Lower_Translation_Joint_"+index_str,0.0);
+                    float upper_translation=props.get_float("Upper_Translation_Joint_"+index_str,0.0);
+                    float axis_x=props.get_float("AxisX_Joint_"+index_str,0.0);
+                    float axis_y=props.get_float("AxisY_Joint_"+index_str,0.0);
+                    bool enable_limits=props.get_bool("Enable_Limits_Joint_"+index_str,true);
+                    bool enable_motor=props.get_bool("Enable_Motor_Joint_"+index_str,true);
+                    join_sys.register_prismatic_joint(id_entity,anchor_x,anchor_y,axis_x,axis_y,lower_translation,upper_translation,motor_speed,max_force,enable_motor,enable_limits);
+                    break;
+                 }
+                 case WELD_JOINT:{
+                    join_sys.register_weld_joint(id_entity);
+                    break;
+                 }
+                 case PULLEY_JOINT:{
+                    join_sys.register_pulley_joint(id_entity);
+                    break;
+                 }
+                 default:break;
+              }
+           }
+
         }
        default:{
           break;

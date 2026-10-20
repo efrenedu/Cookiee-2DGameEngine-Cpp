@@ -2,7 +2,7 @@
 <CodeBlocks_project_file>
 	<FileVersion major="1" minor="6" />
 	<Project>
-		<Option title="2DGame_Engine" />
+		<Option title="CoreEngine" />
 		<Option pch_mode="2" />
 		<Option compiler="gcc" />
 		<Build>
@@ -43,8 +43,8 @@
 			<Add option="-Wall" />
 			<Add option="-m32" />
 			<Add option="-g" />
-			<Add directory="sdl2/include" />
-			<Add directory="box2d/include" />
+			<Add directory="../sdl2/include" />
+			<Add directory="../box2d/include" />
 		</Compiler>
 		<Linker>
 			<Add option="-m32" />
@@ -58,8 +58,8 @@
 			<Add library="gdi32" />
 			<Add library="winmm" />
 			<Add library="dxguid" />
-			<Add directory="sdl2/lib" />
-			<Add directory="box2d/lib" />
+			<Add directory="../sdl2/lib" />
+			<Add directory="../box2d/lib" />
 		</Linker>
 		<ExtraCommands>
 			<Add after="XCOPY $(#sdl2)\bin\*.dll $(TARGET_OUTPUT_DIR) /D /Y" />

@@ -128,4 +128,19 @@ inline constexpr uint8_t get_AnimationCondition_VerificationType(const char* ver
       default: return VERIFICATION_EQUALS;
    }
 }
+
+//get the Type of Joint from a String
+inline constexpr uint8_t get_JointType(const char* name){
+   if(!name){
+      return JOINT_INVALID;
+   }
+   switch(hashString(name)){
+      case "distance"_hash:return DISTANCE_JOINT;
+      case "revolute"_hash:return REVOLUTE_JOINT;
+      case "prismatic"_hash:return PRISMATIC_JOINT;
+      case "weld"_hash:return WELD_JOINT;
+      case "pulley"_hash:return PULLEY_JOINT;
+      default: return JOINT_INVALID;
+   }
+}
 #endif // HASH_SUPPORT_H

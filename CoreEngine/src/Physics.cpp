@@ -63,32 +63,17 @@ void Collider_System::free_system(){
 }
 
 //Register a Collider
-void Collider_System::register_collider(uint16_t id,uint8_t mat_id,bool has_sensor,bool trigger, std::string mask_col_str,std::string mask_sensor_str,std::string bits_str,std::string bits_sensor_str,std::string fig_t,float radius,float radius_sensor, float w,float h,float offsetX,float offsetY,float offsetx_sensor,float offsety_sensor,float padding){
+void Collider_System::register_collider(uint16_t id,uint8_t mat_id,bool trigger, uint16_t mask_col,uint16_t bits,std::string fig_t,float radius, float w,float h,float offsetX,float offsetY,float padding,std::vector<Vertex_Polygon> vertex_list,std::vector<fixture_Data> add_fixtures){
    Collider_Data collider;
    collider.material_id=mat_id;
-
-   collider.collider_mask=get_LayerCollider_mask(mask_col_str.c_str());
-   collider.sensor_mask=get_LayerCollider_mask(mask_sensor_str.c_str());
-   std::vector<std::string> bits_collider_vect=Converter::str_toVect(bits_str);
-   std::vector<std::string> bits_sensor_vect=Converter::str_toVect(bits_sensor_str);
-   uint16_t bits_collider=0;
-   uint16_t bits_sensor=0;
-   for(uint32_t i=0;i<bits_collider_vect.size();i++){
-      bits_collider|=get_LayerCollider_mask(bits_collider_vect[i].c_str());
-   }
-   for(uint32_t i=0;i<bits_sensor_vect.size();i++){
-       bits_sensor|=get_LayerCollider_mask(bits_sensor_vect[i].c_str());
-   }
-   collider.category_bits=bits_collider;
-   collider.category_bits_sensor=bits_sensor;
+   collider.vertexs=vertex_list;
+   collider.collider_mask=mask_col;
+   collider.category_bits=bits;
    collider.is_trigger=trigger;
-   collider.has_sensor=has_sensor;
    collider.offset_x=offsetX;
    collider.offset_y=offsetY;
-   collider.offset_x_sensor=offsetx_sensor;
-   collider.offset_y_sensor=offsety_sensor;
-   collider.radius_sensor=radius_sensor;
    collider.padding=padding;
+   collider.Additional_fixtures=add_fixtures;
    uint8_t new_figure=get_figure_type(fig_t.c_str());
 
    switch(new_figure){
@@ -102,6 +87,8 @@ void Collider_System::register_collider(uint16_t id,uint8_t mat_id,bool has_sens
          break;
       }
       case FIGURE_TYPE::FIGURE_POLYGON:{
+          collider.shape.box.height=h;
+          collider.shape.box.width=w;
           break;
       }
 
@@ -125,7 +112,7 @@ Collider_Data* Collider_System::get_collider(uint16_t id){
 //Reserve Memory for the System
 void Joint_System::reserve_memory(uint16_t count_joint,uint16_t count_entities,uint16_t fillval){
      EntitytoDenseDistance.assign(count_entities,fillval);
-     EntitytoDenseRevolution.assign(count_entities,fillval);
+     EntitytoDenseRevolute.assign(count_entities,fillval);
      EntitytoDensePrismatic.assign(count_entities,fillval);
      EntitytoDensePulley.assign(count_entities,fillval);
      EntitytoDenseWeld.assign(count_entities,fillval);
@@ -176,9 +163,64 @@ void Joint_System::register_distance_joint(uint16_t id,float min_dist,float max_
    joint.stiffness=stiff;
    joint.maxdistance=max_dist;
    joint.mindistance=min_dist;
+   joint.header.mask_joint=JointFlag_Distance;
    uint16_t next_joint=distance_joint_list.size();
    EntitytoDenseDistance[id]=next_joint;
    distance_joint_list.push_back(joint);
+}
+
+//Register a Prismatic Joint
+void Joint_System::register_prismatic_joint(uint16_t id,float anchor_x,float anchor_y,float axis_x,float axis_y,float lower_translation,float upper_translation,float motor_spd,float max_motor_Force,bool use_motor,bool use_limits){
+
+   Prismatic_Join_Data joint;
+   joint.anchorX=anchor_x;
+   joint.anchorY=anchor_y;
+   joint.axisX=axis_x;
+   joint.axisY=axis_y;
+   joint.enableLimits=use_limits;
+   joint.enableMotor=use_motor;
+   joint.lowerTranslation=lower_translation;
+   joint.upperTranslation=upper_translation;
+   joint.maxMotorForce=max_motor_Force;
+   joint.motorSpeed=motor_spd;
+   joint.header.mask_joint=JointFlag_Prismatic;
+   uint16_t next_joint=prismatic_joint_list.size();
+   EntitytoDensePrismatic[id]=next_joint;
+   prismatic_joint_list.push_back(joint);
+}
+
+//Register a Revolute Joint
+void Joint_System::register_revolute_joint(uint16_t id,float anchor_x,float anchor_y,float lower_angle,float upper_angle,float motor_spd,float max_motor_torque,bool use_motor,bool use_limits){
+   Revolute_Join_Data joint;
+   joint.anchorX=anchor_x;
+   joint.anchorY=anchor_y;
+   joint.enableLimits=use_limits;
+   joint.enableMotor=use_motor;
+   joint.lowerAngle=lower_angle;
+   joint.upperAngle=upper_angle;
+   joint.maxMotorTorque=max_motor_torque;
+   joint.header.mask_joint=JointFlag_Revolute;
+   uint16_t next_joint=revolute_joint_list.size();
+   EntitytoDenseRevolute[id]=next_joint;
+   revolute_joint_list.push_back(joint);
+}
+
+//Register a Weld Joint
+void Joint_System::register_weld_joint(uint16_t id){
+   Weld_Join_Data joint;
+   joint.header.mask_joint=JointFlag_Weld;
+   uint16_t next_joint=weld_joint_list.size();
+   EntitytoDenseWeld[id]=next_joint;
+   weld_joint_list.push_back(joint);
+}
+
+//Register a Pulley Joint
+void Joint_System::register_pulley_joint(uint16_t id){
+   Pulley_Join_Data joint;
+   joint.header.mask_joint=JointFlag_Pulley;
+   uint16_t next_joint=pulley_joint_list.size();
+   EntitytoDensePulley[id]=next_joint;
+   pulley_joint_list.push_back(joint);
 }
 
 //RigidBody System Methods
@@ -506,207 +548,5 @@ Vector2 Joint_Component::get_groundOffset_Parent(){
 bool Joint_Component::apply_limits(){
     return use_limits;
 }
-
-
-RigidBody::RigidBody(){
-   mass=0.0f;
-   last_force=Vector2(0,0);
-   impulse_force=Vector2(0,0);
-   next_force=Vector2(0,0);
-   grav_scale=0.0;
-   damping=0.0f;
-   angular_impulse=0;
-   last_angularVel=0;
-   next_angular_vel=0;
-   angular_damping=0.0f,
-   can_sleep=true;
-   initial_active=false;
-}
-
-//Build the RigidBdy
-RigidBody::RigidBody(float masa,float grav_scal,bool can_slp,float damp,float angular_damp,bool init_active){
-   mass=masa;
-   last_force=Vector2(0,0);
-   impulse_force=Vector2(0,0);
-   next_force=Vector2(0,0);
-   next_angular_vel=0.0f;
-   angular_impulse=0.0f;
-   last_angularVel=0.0f;
-   grav_scale=grav_scal;
-   can_sleep=can_slp;
-   pendent_newForce=false;
-   damping=damp;
-   angular_damping=angular_damp;
-   initial_active=init_active;
-   active=initial_active;
-}
-
-//Reset the forces
-void RigidBody::reset(){
-   clear_Forces();
-   last_angularVel=0.0f;
-   last_force=Vector2(0,0);
-   active=initial_active;
-}
-
-//Get the Force of box2d body
-Vector2 RigidBody:: get_last_force(){
-    return last_force;
-}
-
-//Get the Force for Set in the Body
-Vector2 RigidBody:: get_LinearForce(){
-    return next_force;
-}
-
-//Get the force to Add to the Body
-Vector2 RigidBody::get_ImpulseForce(){
-   return impulse_force;
-}
-
-//Get the last Angular Velocity of box2d body
-float RigidBody::get_last_AngularVelocity(){
-   return last_angularVel;
-}
-
-//Get the Angular Velocity to set in box2d body
-float RigidBody::get_AngularVelocity(){
-   return next_angular_vel;
-}
-
-//get the Angular Velocity to Add in box2d body
-float RigidBody::get_AngularImpulse(){
-   return angular_impulse;
-}
-
-//get the gravity scale of body
-float RigidBody::get_gravity(){
-    return grav_scale;
-}
-
-//Set the Last force updated in box2d body
-void RigidBody::set_bodyForce(Vector2 f){
-   last_force=f;
-}
-
-//Set a new Force for update in Box2d body
-void RigidBody::set_Linearforce(Vector2 f){
-   next_force=f;
-   pendent_newForce=true;
-    if(last_force.x==0 && last_force.y==0){
-      if(next_force.x==0 && next_force.y==0){
-         pendent_newForce=false;
-      }
-   }
-}
-
-//Add Force to the Body
-void RigidBody::add_LinearImpulse(Vector2 f){
-    f.x=f.x*mass;
-    f.y=f.y*mass;
-    impulse_force=impulse_force+f;
-}
-
-//Return True if the Body Require set a New Force Value
-bool RigidBody::require_newForce(){
-   return pendent_newForce;
-}
-
-//Require to set the new Angular Velocity in box2d body
-void RigidBody::set_AngularVelocity(float radians){
-   pendent_AngularVel=true;
-   next_angular_vel=radians*-1;
-}
-
-//Require to add angular velocity to the box2d body
-void RigidBody::add_AngularImpulse(float torque){
-   angular_impulse+=torque;
-}
-
-//set the last angular velocity of the body from box2d
-void RigidBody::set_bodyAngularVelocity(float vel){
-    last_angularVel=vel;
-}
-
-//return True if is Neccesary add angular velocity to the body
-bool RigidBody::require_newAngularVel(){
-   return pendent_AngularVel;
-}
-
-
-//clear the pendent forces
-void RigidBody:: clear_Forces(){
-   pendent_newForce=false;
-   pendent_AngularVel=false;
-   next_force=Vector2(0,0);
-   impulse_force=Vector2(0,0);
-   next_angular_vel=0.0f;
-   angular_impulse=0.0f;
-}
-
-
-//Get The Mass
-float RigidBody::get_mass(){
-    return mass;
-}
-
-//Get the Lock Positions Values
-bool RigidBody::get_lock_Rotation(){
-    return lock_rotation;
-}
-
-//Return True if the Body is Kinematic
-bool  RigidBody::is_kinematic(){
-   return kinematic;
-}
-
-//Set Kinmeatic Value
-void  RigidBody::set_kinematic(bool val){
-    kinematic=val;
-}
-//Set Lock Position Value
-void  RigidBody::set_lockRotation(bool lock){
-   lock_rotation=lock;
-}
-//Set the Gravity Value
-void RigidBody::set_gravity(float val){
-   grav_scale=val;
-}
-
-//set damping value
-void RigidBody::set_damping(float val){
-   damping=val;
-}
-
-//set angular damping value
-void RigidBody::set_angularDamping(float val){
-   angular_damping=val;
-}
-
-//Return True if the Body can Sleep
-bool RigidBody::Permit_Sleep(){
-   return can_sleep;
-}
-
-//Return Damping Value
-float RigidBody::get_damping(){
-   return damping;
-}
-
-//Return Angular Damping Value (Air Resistence)
-float RigidBody::get_angular_Damping(){
-   return angular_damping;
-}
-
-//Set Active or Inactive the Body
-void RigidBody::set_active(bool val){
-   active=val;
-}
-
-//Return True if the Body is Active
-bool RigidBody::is_active(){
-   return active;
-}
-
 
 */
