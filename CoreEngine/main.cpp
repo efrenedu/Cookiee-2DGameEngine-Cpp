@@ -63,7 +63,7 @@ int main( int argc, char* argv[] ){
             target_scene.load_sceneSource(render_sys.get_win_render());
             physic_engine.loadWorld(&target_scene);
         }
-        //Updatr Scene and Systems
+        //Update Scene and Systems
         timer_scene.update();
         physic_engine.update_world(timer_scene.get_delta_time(),&target_scene);
         target_scene.update_scene(&render_sys,timer_scene.get_delta_time(),&input_sys,&game_config);

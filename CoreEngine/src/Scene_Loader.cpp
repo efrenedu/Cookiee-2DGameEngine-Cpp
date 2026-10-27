@@ -15,7 +15,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
     }
 
     // Nodo raíz: <Scene>
-    map<uint8_t,uint16_t> comps_count;
+    std::map<uint8_t,uint16_t> comps_count;
     pugi::xml_node sceneNode = doc.child("map");
     uint16_t entities_count=0;
     uint8_t tileset_count=0;
@@ -30,6 +30,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
     uint32_t h_map=sceneNode.attribute("height").as_uint();
     uint8_t num_sounds=0;
     uint8_t num_musics=0;
+    std::unordered_map<uint32_t,uint16_t> hashEntities;
     //Read of Number of Components and Number of Objects
     for(pugi::xml_node tileset_node=sceneNode.child("tileset"); tileset_node; tileset_node = tileset_node.next_sibling("tileset")) {
         tileset_count++;
@@ -41,12 +42,14 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
         for (pugi::xml_node entityNode = layer_entity.child(entity_node_name); entityNode; entityNode = entityNode.next_sibling(entity_node_name)) {
 
             pugi::xml_attribute type_attr=entityNode.attribute("type");
+            pugi::xml_attribute name_attr=entityNode.attribute("name");
+
             bool not_entity=false;
             if(type_attr){
                 uint32_t hash_typeAttr=hashString(type_attr.as_string());
                 switch(hash_typeAttr){
                    case hashString("music"):not_entity=true;num_musics++;break;
-                   case hashString("sound"):not_entity=true;num_sounds++;break;
+                   case hashString("audio"):not_entity=true;num_sounds++;break;
                    case hashString("physic_material"):not_entity=true;num_physic_materials++;break;
                    case hashString("camera"):not_entity=true;break;
                    default: break;
@@ -55,10 +58,12 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
             if(not_entity){
                  continue;
             }
+            uint32_t hash_name=hashString(name_attr.as_string());
+            hashEntities[hash_name]=entities_count;
             entities_count++;
             comps_count[TRANSFORM_COMP]+=1;
             pugi::xml_node properties_node=entityNode.child("properties");
-            for(pugi::xml_node property_node=properties_node.child("property");property_node;property_node=properties_node.next_sibling("property")){
+            for(pugi::xml_node property_node=properties_node.child("property");property_node;property_node=property_node.next_sibling("property")){
                 const char* property_id=property_node.attribute("name").as_string();
                 bool valid=false;
                 uint8_t type_comp=ComponentName_to_ComponentIndex(property_id);
@@ -110,21 +115,24 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
     uint16_t index_entity=0;
     for(pugi::xml_node layer_entity=sceneNode.child(entity_layer_name); layer_entity; layer_entity = layer_entity.next_sibling(entity_layer_name)) {
         for (pugi::xml_node entityNode = layer_entity.child(entity_node_name); entityNode; entityNode = entityNode.next_sibling(entity_node_name)) {
-            ComponentMask mask = 0;
+            std::bitset<64> mask = 0;
             Entity_Props props;
             bool not_entity=false;
             //set Transform
             const char* h=entityNode.attribute("height").as_string();
             const char* w=entityNode.attribute("width").as_string();
+            props.set_value("width",w);
+            props.set_value("height",h);
             bool has_texid=false;
             bool is_ui=false;
             Add_ComponentBit(mask,TRANSFORM_COMP);
             props.set_value("position_x",entityNode.attribute("x").as_string());
-            if(pugi::xml_attribute rot_attr=entityNode.attribute("gid")){
+            if(pugi::xml_attribute gid_attr=entityNode.attribute("gid")){
                has_texid=true;
                float temp_y=entityNode.attribute("y").as_float()-entityNode.attribute("height").as_float();
                props.set_value("position_y",to_string(temp_y*-1).c_str());
                props.set_value("visible","true");
+               props.set_value("gid",entityNode.attribute("gid").as_string());
 
             }
             else{
@@ -170,7 +178,6 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                        float y_cam=props.get_float("position_y",0.0f);
                        uint16_t w_view=400;
                        uint16_t h_view=400;
-                       uint16_t target_follow=0;
                        pugi::xml_node properties_nodes=entityNode.child("properties");
                        for(pugi::xml_node target_node=properties_nodes.child("property");target_node;target_node=target_node.next_sibling("property")){
                           string name_attr=target_node.attribute("name").as_string();
@@ -178,8 +185,15 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                        }
                        w_view=props.get_uint("ViewPort_Width",400);
                        h_view=props.get_uint("ViewPort_Height",400);
-                       target_follow=props.get_uint("Target_Follow",0xFFFF);
-                       cam.Init(x_cam,y_cam,w_view,h_view,target_follow);
+                       uint16_t target_followId=0xFFFF;
+                       float offset_target_x=props.get_float("Offset_TargetX",0.0);
+                       float offset_target_y=props.get_float("Offset_TargetY",0.0);
+                       uint32_t hash_id=hashString(props.get_string("Target_Follow","").c_str());
+                       auto it=hashEntities.find(hash_id);
+                       if(it!=hashEntities.end()){
+                           target_followId=hashEntities[hash_id];
+                       }
+                       cam.Init(x_cam,y_cam,w_view,h_view,target_followId,offset_target_x,offset_target_y);
                        target_scene->set_camera(cam);
                        not_entity=true;
                        break;
@@ -236,14 +250,15 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
             for(pugi::xml_node property_node=properties_node.child("property");property_node;property_node=property_node.next_sibling("property")){
                 const char* property_id=property_node.attribute("name").as_string();
                 bool valid=false;
-                components_types type_comp=ComponentName_to_ComponentIndex(property_id);
-                if(type_comp!=UKNOW_COMP){
-                    Add_ComponentBit(mask,type_comp);
+                uint8_t type_comp=ComponentName_to_ComponentIndex(property_id);
+                components_types type_c=static_cast<components_types>(type_comp);
+                if(type_c!=UKNOW_COMP){
+                    Add_ComponentBit(mask,type_c);
                     continue;
                 }
-                string property_val=verify_paramValue(property_id,property_node.attribute("value").as_string(),physic_sys);
-                props.set_value(property_id,property_val);
+                props.set_value(property_id,property_node.attribute("value").as_string());
             }
+            reassign_StringParams(props,physic_sys,hashEntities);
             target_scene->register_entity(index_entity, mask, props);
             index_entity++;
         }
@@ -254,20 +269,72 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
 
 }
 
-//Verify Value of Param and Convert it if is Necessary
-string Scene_Loader::verify_paramValue(string param_name,string param_val,Physic_Material_System& physic_sys){
-    string res=param_val;
-    switch (hashString(param_name.c_str())){
-        case hashString("physic_material"):{
-            int8_t id=physic_sys.get_material_id(hashString(param_val.c_str()));
-            res=to_string(id);
-            break;
+//Reassign Expected Text Params from Tiled Scenes to the Correct Format
+void Scene_Loader::reassign_StringParams(Entity_Props& props,Physic_Material_System& physic_sys,std::unordered_map<uint32_t ,uint16_t>hash_names){
+   std::string bd_type_str=props.get_string("body_type","");
+   if(!bd_type_str.empty()){
+      uint8_t bd_type=get_body_type(bd_type_str.c_str());
+      props.set_value("body_type",to_string(bd_type));
+   }
+   uint8_t joint_count=props.get_uint("Joint_Count",0);
+   //Reassign Joint Targets
+   for(uint8_t i=0;i<joint_count;i++){
+        std::string index_str=to_string(static_cast<int>(i));
+        std::string val_str=props.get_string("Joint_Target_"+index_str,"");
+        if(val_str.empty()){
+            continue;
         }
-        default:
-            break;
-     }
-     return res;
+        uint32_t hash_target=hashString(val_str.c_str());
+        auto it=hash_names.find(hash_target);
+        if(it!=hash_names.end()){
+            props.set_value("Joint_Target_"+index_str,to_string(hash_names[hash_target]));
+        }
+        else{
+           props.set_value("Joint_Target_"+index_str,to_string(0xFFFF));
+        }
+   }
+   std::string mat_str=props.get_string("physic_material","");
+   if(!mat_str.empty()){
+       int8_t id=physic_sys.get_material_id(hashString(mat_str.c_str()));
+       props.set_value("physic_material",to_string(id));
+   }
+   //Convert Additional Fixtures of Collider
+   uint8_t count_addiontalFixtures=props.get_uint("Count_Add_Fixtures",0);
+   for(uint8_t i=0;i<count_addiontalFixtures;i++){
+        std::string index_str=to_string(static_cast<uint16_t>(i));
+        std::string mask_fixture_str=props.get_string("Fixture_Mask_"+index_str,"");
+        if(mask_fixture_str.empty()){
+            continue;
+        }
+        uint16_t new_mask= get_LayerCollider_mask(mask_fixture_str.c_str());
+        props.set_value("Fixture_Mask_"+index_str,to_string(new_mask));
+        std::vector<std::string> bit_fixture_list=Converter::str_toVect(props.get_string("Fixture_Category_Bits_"+index_str,""));
+        if(bit_fixture_list.size()>0){
+            std::string new_category=to_string(get_LayerCollider_mask(bit_fixture_list[0].c_str()));
+            for(uint8_t j=1;j<bit_fixture_list.size();j++){
+                new_category=new_category+","+to_string(get_LayerCollider_mask(bit_fixture_list[j].c_str()));
+            }
+            props.set_value("Fixture_Category_Bits_"+index_str,new_category);
+        }
+
+
+    }
+    //Figure and Collider Mask Conversion
+    uint8_t fig=get_figure_type(props.get_string("figure_type","").c_str());
+    props.set_value("figure_type",to_string(fig));
+    uint16_t mask_collider=get_LayerCollider_mask(props.get_string("collider_mask","").c_str());
+    props.set_value("collider_mask",to_string(mask_collider));
+    std::vector<std::string> bits_collider=Converter::str_toVect(props.get_string("collider_categoryBits",""));
+    if(bits_collider.size()>0){
+        std::string new_category=to_string(get_LayerCollider_mask(bits_collider[0].c_str()));
+        for(uint8_t i=1;i<bits_collider.size();i++){
+            new_category=new_category+","+to_string(get_LayerCollider_mask(bits_collider[i].c_str()));
+        }
+        props.set_value("collider_categoryBits",new_category);
+    }
+
 }
+
 
 //Load Scene Data From a XML File
 bool Scene_Loader::LoadSceneXML(const char* filePath,Scene* target_scene,const char* root_name,const char* entity_node_name,const char* component_node_name,const char* header_name) {
@@ -329,18 +396,19 @@ bool Scene_Loader::LoadSceneXML(const char* filePath,Scene* target_scene,const c
     for (pugi::xml_node entityNode = sceneNode.child(entity_node_name); entityNode; entityNode = entityNode.next_sibling(entity_node_name)) {
 
         uint32_t entityID = entityNode.attribute("id").as_uint();
-        ComponentMask mask = 0; // Iniciar máscara limpia en 0
+        std::bitset<64> mask; // Iniciar máscara limpia en 0
         Entity_Props props;
 
         // Leer componentes dentro de la entidad
         for (pugi::xml_node compNode = entityNode.child(component_node_name); compNode; compNode = compNode.next_sibling(component_node_name)) {
 
             const char*  compType = compNode.attribute("type").value();
-            components_types type_val=ComponentName_to_ComponentIndex(compType);
-            if(type_val==UKNOW_COMP){
+            uint8_t type_val=ComponentName_to_ComponentIndex(compType);
+            components_types tp=static_cast<components_types>(type_val);
+            if(tp==UKNOW_COMP){
                 continue;
             }
-            Add_ComponentBit(mask,type_val);
+            Add_ComponentBit(mask,tp);
             size_t count_target=0;
             /*const char* const* props_names=world.GetComponentProps(type_val,count_target);
             for(size_t i=0;i<count_target;++i){

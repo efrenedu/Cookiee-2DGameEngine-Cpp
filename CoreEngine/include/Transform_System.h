@@ -7,6 +7,7 @@
 struct Transform_Data{
     uint16_t scale;
     float angle;
+    float initialAngle;
     float lastRadians;
     float accumlated_radians;
     float x;

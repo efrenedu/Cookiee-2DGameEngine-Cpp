@@ -42,8 +42,9 @@ struct Render_DrawSystem
       SDL_Renderer* get_win_render();
       SDL_Window* get_win();
       void On_WindowResize(uint16_t new_w,uint16_t new_h);
-
     private:
+      void draw_spriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,uint8_t z_index,float centerX,float centerY,float angle,float initial_angle,bool flipped);
+
       SDL_Renderer* main_render;
       SDL_Renderer* splash_render;
       SDL_Window* main_win;

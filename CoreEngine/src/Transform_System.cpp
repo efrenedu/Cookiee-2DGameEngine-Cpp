@@ -14,6 +14,7 @@ void Transform_System:: free_system(){
 void Transform_System:: register_transform(float px,float py,int16_t t_scale,float angle,bool flip_val){
    Transform_Data data;
    data.angle=angle;
+   data.initialAngle=angle;
    data.scale=t_scale;
    data.x=px;
    data.y=py;

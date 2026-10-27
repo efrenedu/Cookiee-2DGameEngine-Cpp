@@ -3,12 +3,17 @@
 
 
 //Init the Camer
-void Camera2D::Init(float pos_x,float pos_y,uint16_t w_view,uint16_t h_view,uint16_t target){
+void Camera2D::Init(float pos_x,float pos_y,uint16_t w_view,uint16_t h_view,uint16_t target,float offset_targt_x,float offset_targt_y){
     x=pos_x;
     y=pos_y;
     width_viewport=w_view;
     height_viewport=h_view;
+    half_width_viewport=width_viewport*0.5;
+    half_height_viewport=height_viewport*0.5;
     follow=target;
+    offset_targetX=offset_targt_x;
+    offset_targetY=offset_targt_y;
+    get_TargetSize=true;
 }
 //Set Render Position
 void Camera2D::update_renderPos(){
@@ -22,12 +27,24 @@ void Camera2D::follow_target(Scene* target_scene){
      return;
   }
   Transform_Data* transf=target_scene->get_transform_sys()->get_transform(follow);
+  if(get_TargetSize){
+    get_TargetSize=false;
+    Render_data* render=target_scene->get_render_sys()->get_render(follow);
+    if(render!=NULL){
+       SDL_Rect rect;
+       SDL_Texture *tex=target_scene->get_texture_system()->get_texture_fromSprite(rect,render->sprite_id);
+       if(tex!=NULL){
+           offset_targetX-=rect.w*0.5;
+           offset_targetY-=rect.h*0.5;
+        }
+     }
+  }
   if(transf==NULL){
     return;
   }
-  float x_target=transf->x;
-  float y_target=transf->y;
-
+  float new_x=(transf->x-offset_targetX)-half_width_viewport;
+  float new_y=((transf->y*-1)-offset_targetY)-half_height_viewport;
+  set_position(new_x,new_y);
 }
 
 

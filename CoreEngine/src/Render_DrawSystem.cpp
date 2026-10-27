@@ -1,4 +1,5 @@
 #include "Render_DrawSystem.h"
+#include "math_structs.h"
 
 //Init the System
 bool Render_DrawSystem::Init_System(){
@@ -125,11 +126,12 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
     float bottom_cam=cam->getBottom();
     Transform_System* transf_sys=target_scene->get_transform_sys();
     Render_System* render_sys=target_scene->get_render_sys();
+
     for(uint16_t i=0;i<num_enities;i++){
           Transform_Data* data_transform=transf_sys->get_transform(i);
           float x=data_transform->x;
           float y=data_transform->y*-1;
-          uint16_t angle=data_transform->angle;
+          float angle=data_transform->angle;
           bool flipped=data_transform->flipped;
           uint16_t scale=data_transform->scale;
           uint16_t width=32;
@@ -137,15 +139,19 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
           float screen_x=x-left_cam;
           float screen_y=y-bottom_cam;
           SDL_Rect rect_obj;
-          uint32_t mask_entity=target_scene->get_mask(i);
+
+          std::bitset<64> mask_entity=target_scene->get_mask(i);
           bool is_collider=false;
           bool is_rendered=false;
+          bool is_composer=false;
           if(HasComponentBit(mask_entity,COLLIDER_COMP)){
              is_collider=true;
           }
           if(HasComponentBit(mask_entity,RENDER_COMP)){
              is_rendered=true;
-
+          }
+          if(HasComponentBit(mask_entity,SPRITECOMPOSER_COMP)){
+             is_composer=true;
           }
           if(is_rendered==false &&(is_collider==true && draw_colliders_borders==true)==false){
              continue;
@@ -209,12 +215,20 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
           if(tex!=NULL){
             width=rect_sprite.w*scale;
             height=rect_sprite.h*scale;
+            rect_obj.x=x-(width*0.5);
+            rect_obj.y=y-(height*0.5);
           }
+          rect_obj.x-=left_cam;
+          rect_obj.y-=bottom_cam;
           rect_obj.w=width;
           rect_obj.h=height;
           bool on_Camera=(x+width>=left_cam)&&(x<=right_cam)&&(y+height>=bottom_cam) &&(y<=top_cam);
           if(on_Camera==false){
               continue;
+          }
+          if(is_composer){
+            draw_spriteComposer(target_scene,texture_sys,i,render_dat->z_index,screen_x,screen_y,angle,data_transform->initialAngle,flipped);
+            continue;
           }
           SDL_Point point_pivot;
           point_pivot.x=rect_sprite.w*0.5;
@@ -234,6 +248,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
           });
 
     }
+
     for (const RenderCommand& cmd:render_queue){
 
         SDL_Texture* tex=cmd.tex_id;
@@ -268,6 +283,69 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
 void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target_scene,uint16_t ui_id){
 
 }
+
+//Draw the Sprite Composer
+void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,uint8_t z_index,float centerX,float centerY,float angle,float initial_angle,bool flipped){
+  if(target_scene==NULL){
+       return;
+  }
+  SpriteComposer_System* composer_sys=target_scene->get_SpriteComposer_sys();
+  if(composer_sys==NULL){
+     return;
+  }
+  SpriteComposer_Data* composer_spr=composer_sys->get_spriteComposer(index_entity);
+  if(composer_spr==NULL){
+      return;
+  }
+
+
+  float total_angle=angle;
+  if(initial_angle!=0){
+     total_angle=fmod(angle+(-initial_angle),360.0);
+     if(total_angle<0){
+         total_angle+=360;
+     }
+  }
+  float rad=Math_G::to_rad(total_angle);
+  float sin=Math_G::Sin(Math_G::to_rad(total_angle));
+  float cos=Math_G::Cos(Math_G::to_rad(total_angle));
+  for(SpriteComposer_Item sprite:composer_spr->sprites){
+      float offsetx=sprite.offsetX;
+      float offsety=sprite.offsetY;
+      uint16_t index_sprite=sprite.id_sprite;
+      SDL_Rect rect_sprite;
+      SDL_Texture* tex=texture_sys->get_texture_fromSprite(rect_sprite,index_sprite);
+      if(tex==NULL){
+         continue;
+      }
+      SDL_Rect rect_obj;
+      float rotatedOffsetX=(offsetx*cos)-(offsety*sin);
+      float rotatedOffsetY=(offsetx*sin)+(offsety*cos);
+      rect_obj.w=rect_sprite.w;
+      rect_obj.h=rect_sprite.h;
+      rect_obj.x=(centerX+rotatedOffsetX)-(rect_sprite.w*0.5);
+      rect_obj.y=(centerY+rotatedOffsetY)-(rect_sprite.h*0.5);
+
+      SDL_Point point_pivot;
+      point_pivot.x=rect_sprite.w*0.5;
+      point_pivot.y=rect_sprite.h*0.5;
+      render_queue.push_back({
+        tex,
+        rect_obj,
+        rect_sprite,
+        point_pivot,
+        total_angle,
+        z_index,
+        flipped,
+        false
+       });
+       std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
+            return a.z_index<b.z_index;
+       });
+  }
+
+}
+
 
 //Draw the Tilemap
 void  Render_DrawSystem::draw_tilemap(textureManager_system* texture_sys,System_TileMap* tilemap,Camera2D* cam){

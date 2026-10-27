@@ -21,26 +21,27 @@ inline constexpr uint32_t operator""_hash(const char* str,size_t len){
 
 
 //Get the Component Type from a String using the hash of it
-inline constexpr components_types ComponentName_to_ComponentIndex(const char* name ){
+inline constexpr uint8_t ComponentName_to_ComponentIndex(const char* name ){
    if(!name){
-      return UKNOW_COMP;
+      return components_types::UKNOW_COMP;
    }
    switch(hashString(name)){
-      case "transform"_hash: return TRANSFORM_COMP;
-      case "render"_hash:return RENDER_COMP;
-      case "collider"_hash:return COLLIDER_COMP;
-      case "rigidbody"_hash:return RIGIDBODY_COMP;
-      case "joint"_hash:return JOINT_COMP;
-      case "animator"_hash:return ANIMATOR_COMP;
-      case "player"_hash:return PLAYER_COMP;
-      default: return UKNOW_COMP;
+      case "transform"_hash: return components_types::TRANSFORM_COMP;
+      case "render"_hash:return components_types::RENDER_COMP;
+      case "collider"_hash:return components_types::COLLIDER_COMP;
+      case "rigidbody"_hash:return components_types::RIGIDBODY_COMP;
+      case "joint"_hash:return components_types::JOINT_COMP;
+      case "animator"_hash:return components_types::ANIMATOR_COMP;
+      case "player"_hash:return components_types::PLAYER_COMP;
+      case "spriteComposer"_hash:return components_types::SPRITECOMPOSER_COMP;
+      default: return components_types::UKNOW_COMP;
    }
 
 }
 //Get the List of Availables components Names
 inline constexpr auto GetComponentKeysNames(){
     std::array<const char*,COMP_COUNT> keys={
-      "transform","render","camera","collider","rigidbody","joint","animator","button","label","panel","checkbtn",
+      "transform","render","camera","collider","rigidbody","joint","animator","spriteComposer","button","label","panel","checkbtn",
       "radiobtn","valuebar","scrollbar","slider","canvas","player","enemy",
     };
     return keys;
@@ -75,6 +76,19 @@ inline constexpr uint8_t get_figure_type(const char* name_fig){
       case "square"_hash:return FIGURE_TYPE::FIGURE_SQUARE;
       case "polygon"_hash:return FIGURE_TYPE::FIGURE_POLYGON;
       default: return FIGURE_TYPE::FIGURE_NONE;
+   }
+}
+
+//Get the Body Type from the String Hash of It
+inline constexpr uint8_t get_body_type(const char* name_type){
+   if(!name_type){
+      return BODY_TYPES::BODY_DINAMIC;
+   }
+   switch(hashString(name_type)){
+      case "dinamic"_hash:return BODY_TYPES::BODY_DINAMIC;
+      case "kinematic"_hash:return BODY_TYPES::BODY_KINEMATIC;
+      case "static"_hash:return BODY_TYPES::BODY_STATIC;
+      default: return BODY_TYPES::BODY_DINAMIC;
    }
 }
 

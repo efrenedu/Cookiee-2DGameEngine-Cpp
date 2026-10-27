@@ -6,7 +6,7 @@ class Scene;
 //The Camera of Scene
 struct Camera2D{
   public:
-    void Init(float pos_x,float pos_y,uint16_t w_view,uint16_t h_view,uint16_t target);
+    void Init(float pos_x,float pos_y,uint16_t w_view,uint16_t h_view,uint16_t target,float offset_targt_x,float offset_targt_y);
     void update_renderPos();
     void follow_target(Scene* target_scene);
     void set_viewport(uint16_t w_view,uint16_t h_view);
@@ -19,12 +19,17 @@ struct Camera2D{
   private:
     uint16_t width_viewport=400;
     uint16_t height_viewport=400;
+    uint16_t half_width_viewport=200;
+    uint16_t half_height_viewport=200;
     uint16_t follow;
     float x=0;
     float y=0;
     float last_RenderX=0;
     float last_RenderY=0;
-    float threshold=15.0f;
+    float threshold=2.0f;
+    float offset_targetX=0.0;
+    float offset_targetY=0.0f;
+    bool get_TargetSize;
 
 
 };

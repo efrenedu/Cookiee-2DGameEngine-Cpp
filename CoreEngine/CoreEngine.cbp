@@ -81,6 +81,7 @@
 		<Unit filename="include/Scene.h" />
 		<Unit filename="include/Scene_Loader.h" />
 		<Unit filename="include/Screen.h" />
+		<Unit filename="include/SpriteComposer.h" />
 		<Unit filename="include/TileMap.h" />
 		<Unit filename="include/Timer.h" />
 		<Unit filename="include/Transform_System.h" />
@@ -110,6 +111,7 @@
 		<Unit filename="src/Scene.cpp" />
 		<Unit filename="src/Scene_Loader.cpp" />
 		<Unit filename="src/Screen.cpp" />
+		<Unit filename="src/SpriteComposer.cpp" />
 		<Unit filename="src/TileMap.cpp" />
 		<Unit filename="src/Timer.cpp" />
 		<Unit filename="src/Transform_System.cpp" />

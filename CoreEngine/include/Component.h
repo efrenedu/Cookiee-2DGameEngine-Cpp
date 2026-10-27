@@ -1,6 +1,7 @@
 #ifndef COMPONENT_H
 #define COMPONENT_H
 #include<cstdint>
+#include<bitset>
 
 //Indicate the Type of Component for the Mask of a Entity
 enum components_types:uint8_t{
@@ -9,32 +10,33 @@ enum components_types:uint8_t{
     COLLIDER_COMP=2,
     RIGIDBODY_COMP=3,
     ANIMATOR_COMP=4,
-    JOINT_COMP=5,
-    BUTTON_COMP=6,
-    LABEL_COMP=7,
-    PANEL_COMP=8,
-    CHECKBTN_COMP=9,
-    RADIOBTN_COMP=10,
-    VALUEBAR_COMP=11,
-    SCROLLBAR_COMP=12,
-    SLIDER_COMP=13,
-    CANVAS_COMP=14,
-    PLAYER_COMP=15,
-    ENEMY_COMP=16,
-    UKNOW_COMP=32,
+    SPRITECOMPOSER_COMP=5,
+    JOINT_COMP=6,
+    BUTTON_COMP=7,
+    LABEL_COMP=8,
+    PANEL_COMP=9,
+    CHECKBTN_COMP=10,
+    RADIOBTN_COMP=11,
+    VALUEBAR_COMP=12,
+    SCROLLBAR_COMP=13,
+    SLIDER_COMP=14,
+    CANVAS_COMP=15,
+    PLAYER_COMP=16,
+    ENEMY_COMP=17,
+    UKNOW_COMP=30,
     COMP_COUNT
 };
-using ComponentMask=uint32_t;
+using ComponentMask=uint64_t;
 
 //Auxiliar Functions for Manage Bits of Component Mak
-inline void Add_ComponentBit(ComponentMask& mask,components_types type){
-   mask |=(1U<<type);
+inline void Add_ComponentBit(std::bitset<64>&mask,components_types type){
+   mask.set(type);
 }
-inline void RemoveComponentBit(ComponentMask& mask , components_types type){
-  mask &=~(1U<<type);
+inline void RemoveComponentBit(std::bitset<64>&mask , components_types type){
+  mask.reset(type);
 }
-inline bool HasComponentBit(ComponentMask mask,components_types type){
-   return (mask &(1U<<type))!=0;
+inline bool HasComponentBit(std::bitset<64>&mask,components_types type){
+   return mask.test(type);
 }
 
 

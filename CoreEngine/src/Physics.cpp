@@ -5,6 +5,7 @@
 #include<iostream>
 #include<Converter.h>
 #include<math_structs.h>
+#include<Physic_Engine.h>
 
 //Physic Material System Methods
 
@@ -63,7 +64,7 @@ void Collider_System::free_system(){
 }
 
 //Register a Collider
-void Collider_System::register_collider(uint16_t id,uint8_t mat_id,bool trigger, uint16_t mask_col,uint16_t bits,std::string fig_t,float radius, float w,float h,float offsetX,float offsetY,float padding,std::vector<Vertex_Polygon> vertex_list,std::vector<fixture_Data> add_fixtures){
+void Collider_System::register_collider(uint16_t id,uint8_t mat_id,bool trigger, uint16_t mask_col,uint16_t bits,uint8_t fig_t,float radius, float w,float h,float offsetX,float offsetY,float padding,std::vector<Vertex_Polygon> vertex_list,std::vector<fixture_Data> add_fixtures){
    Collider_Data collider;
    collider.material_id=mat_id;
    collider.vertexs=vertex_list;
@@ -74,9 +75,7 @@ void Collider_System::register_collider(uint16_t id,uint8_t mat_id,bool trigger,
    collider.offset_y=offsetY;
    collider.padding=padding;
    collider.Additional_fixtures=add_fixtures;
-   uint8_t new_figure=get_figure_type(fig_t.c_str());
-
-   switch(new_figure){
+   switch(fig_t){
       case FIGURE_TYPE::FIGURE_CIRCLE:{
          collider.shape.circle.radius=radius;
          break;
@@ -96,7 +95,7 @@ void Collider_System::register_collider(uint16_t id,uint8_t mat_id,bool trigger,
          break;
       }
    }
-   collider.collider_type=new_figure;
+   collider.collider_type=fig_t;
    uint16_t next_id=list_colliders.size();
    EntitytoDense[id]=next_id;
    list_colliders.push_back(collider);
@@ -109,13 +108,22 @@ Collider_Data* Collider_System::get_collider(uint16_t id){
 
 //Joint System Methods
 
+//Init the System
+void Joint_System::Init(Physic_Engine_System* sys){
+   physic_sys=sys;
+}
+
 //Reserve Memory for the System
 void Joint_System::reserve_memory(uint16_t count_joint,uint16_t count_entities,uint16_t fillval){
-     EntitytoDenseDistance.assign(count_entities,fillval);
-     EntitytoDenseRevolute.assign(count_entities,fillval);
-     EntitytoDensePrismatic.assign(count_entities,fillval);
-     EntitytoDensePulley.assign(count_entities,fillval);
-     EntitytoDenseWeld.assign(count_entities,fillval);
+     EntityJoint_Data default_val;
+     default_val.DistanceJoint_Index=fillval;
+     default_val.mask_joint=JointFlag_None;
+     default_val.PrismaticJoint_Index=fillval;
+     default_val.PulleyJoint_Index=fillval;
+     default_val.RevoluteJoint_Index=fillval;
+     default_val.WeldJoint_Index=fillval;
+     EntitytoDense.assign(count_entities,default_val);
+
      distance_joint_list.reserve(count_joint);
      revolute_joint_list.reserve(count_joint);
      prismatic_joint_list.reserve(count_joint);
@@ -125,102 +133,266 @@ void Joint_System::reserve_memory(uint16_t count_joint,uint16_t count_entities,u
 
 //clear the joint system
 void Joint_System::free_system(){
-   for(Distance_Join_Data& temp_joint: distance_joint_list){
-       b2Joint* temp_joint_ptr=temp_joint.header.b2jointPtr;
-       world_physics->DestroyJoint(temp_joint_ptr);
-   }
-   for(Revolute_Join_Data& temp_joint: revolute_joint_list){
-       b2Joint* temp_joint_ptr=temp_joint.header.b2jointPtr;
-       world_physics->DestroyJoint(temp_joint_ptr);
-   }
-   for(Prismatic_Join_Data& temp_joint: prismatic_joint_list){
-       b2Joint* temp_joint_ptr=temp_joint.header.b2jointPtr;
-       world_physics->DestroyJoint(temp_joint_ptr);
-   }
-   for(Weld_Join_Data& temp_joint: weld_joint_list){
-       b2Joint* temp_joint_ptr=temp_joint.header.b2jointPtr;
-       world_physics->DestroyJoint(temp_joint_ptr);
-   }
-    for(Pulley_Join_Data& temp_joint: pulley_joint_list){
-       b2Joint* temp_joint_ptr=temp_joint.header.b2jointPtr;
-       world_physics->DestroyJoint(temp_joint_ptr);
-   }
    pulley_joint_list.clear();
    prismatic_joint_list.clear();
    distance_joint_list.clear();
    revolute_joint_list.clear();
    weld_joint_list.clear();
+   EntitytoDense.clear();
+}
+
+//Destroy the Target Joint
+void Joint_System::destroy_joint(b2Joint* jointptr){
+  if(jointptr==nullptr){
+     return;
+  }
+  if(physic_sys==nullptr){
+      return;
+  }
+  physic_sys->request_destroy_joint(jointptr);
 }
 
 //Register a Distance Joint
-void Joint_System::register_distance_joint(uint16_t id,float min_dist,float max_dist,float stiff,float damp,float anchorA_X,float anchorA_Y,float anchorB_X,float anchorB_Y){
+void Joint_System::register_distance_joint(uint16_t id,uint16_t entityB,bool removeOn_build,bool collide_connect,float min_dist,float max_dist,float stiff,float damp,float anchorA_x,float anchorA_y,float anchorB_x,float anchorB_y){
    Distance_Join_Data joint;
-   joint.anchorAX=anchorA_X;
-   joint.anchorAY=anchorA_Y;
-   joint.anchorBX=anchorB_X;
-   joint.anchorBY=anchorB_Y;
+   joint.header.collide_connect=collide_connect;
    joint.damping=damp;
    joint.stiffness=stiff;
    joint.maxdistance=max_dist;
    joint.mindistance=min_dist;
-   joint.header.mask_joint=JointFlag_Distance;
+   joint.header.entityA=id;
+   joint.header.entityB=entityB;
+   joint.anchorA_x=anchorA_x;
+   joint.anchorA_y=anchorA_y;
+   joint.anchorB_x=anchorB_x;
+   joint.anchorB_y=anchorB_y;
+   joint.header.removeOnBuild=removeOn_build;
    uint16_t next_joint=distance_joint_list.size();
-   EntitytoDenseDistance[id]=next_joint;
+   EntitytoDense[id].DistanceJoint_Index=next_joint;
+   EntitytoDense[id].mask_joint|=(1U<<JointFlag_Distance);
    distance_joint_list.push_back(joint);
 }
 
 //Register a Prismatic Joint
-void Joint_System::register_prismatic_joint(uint16_t id,float anchor_x,float anchor_y,float axis_x,float axis_y,float lower_translation,float upper_translation,float motor_spd,float max_motor_Force,bool use_motor,bool use_limits){
+void Joint_System::register_prismatic_joint(uint16_t id,uint16_t entityB,bool removeOn_build,bool collide_connect, float axis_x,float axis_y,float angle_ref,float lower_translation,float upper_translation,float motor_spd,float max_motor_Force,bool use_motor,bool use_limits){
 
    Prismatic_Join_Data joint;
-   joint.anchorX=anchor_x;
-   joint.anchorY=anchor_y;
    joint.axisX=axis_x;
    joint.axisY=axis_y;
+   joint.angle=angle_ref;
    joint.enableLimits=use_limits;
    joint.enableMotor=use_motor;
    joint.lowerTranslation=lower_translation;
    joint.upperTranslation=upper_translation;
    joint.maxMotorForce=max_motor_Force;
    joint.motorSpeed=motor_spd;
-   joint.header.mask_joint=JointFlag_Prismatic;
+   joint.header.entityA=id;
+   joint.header.entityB=entityB;
+   joint.header.removeOnBuild=removeOn_build;
+   joint.header.collide_connect=collide_connect;
    uint16_t next_joint=prismatic_joint_list.size();
-   EntitytoDensePrismatic[id]=next_joint;
+   EntitytoDense[id].PrismaticJoint_Index=next_joint;
+   EntitytoDense[id].mask_joint|=(1U<<JointFlag_Prismatic);
    prismatic_joint_list.push_back(joint);
 }
 
 //Register a Revolute Joint
-void Joint_System::register_revolute_joint(uint16_t id,float anchor_x,float anchor_y,float lower_angle,float upper_angle,float motor_spd,float max_motor_torque,bool use_motor,bool use_limits){
+void Joint_System::register_revolute_joint(uint16_t id,uint16_t entityB,bool removeOn_build,bool collide_connect,float ref_angle,float lower_angle,float upper_angle,float motor_spd,float max_motor_torque,bool use_motor,bool use_limits){
    Revolute_Join_Data joint;
-   joint.anchorX=anchor_x;
-   joint.anchorY=anchor_y;
+   joint.ref_angle=ref_angle;
    joint.enableLimits=use_limits;
    joint.enableMotor=use_motor;
    joint.lowerAngle=lower_angle;
    joint.upperAngle=upper_angle;
    joint.maxMotorTorque=max_motor_torque;
-   joint.header.mask_joint=JointFlag_Revolute;
+   joint.motorSpeed=motor_spd;
+   joint.header.entityA=id;
+   joint.header.entityB=entityB;
+   joint.header.removeOnBuild=removeOn_build;
+   joint.header.collide_connect=collide_connect;
    uint16_t next_joint=revolute_joint_list.size();
-   EntitytoDenseRevolute[id]=next_joint;
+   EntitytoDense[id].RevoluteJoint_Index=next_joint;
+   EntitytoDense[id].mask_joint|=(1U<<JointFlag_Revolute);
    revolute_joint_list.push_back(joint);
 }
 
 //Register a Weld Joint
-void Joint_System::register_weld_joint(uint16_t id){
+void Joint_System::register_weld_joint(uint16_t id,uint16_t entitiB,bool removeOn_build,bool collide_connect,float stiffnes,float damp,float ref_angle){
    Weld_Join_Data joint;
-   joint.header.mask_joint=JointFlag_Weld;
+   joint.header.entityA=id;
+   joint.header.entityB=entitiB;
+   joint.header.removeOnBuild=removeOn_build;
+   joint.header.collide_connect=collide_connect;
+   joint.stiffnes=stiffnes;
+   joint.damping=damp;
+   joint.ref_angle=ref_angle;
    uint16_t next_joint=weld_joint_list.size();
-   EntitytoDenseWeld[id]=next_joint;
+   EntitytoDense[id].WeldJoint_Index=next_joint;
+   EntitytoDense[id].mask_joint|=(1U<<JointFlag_Weld);
    weld_joint_list.push_back(joint);
 }
 
 //Register a Pulley Joint
-void Joint_System::register_pulley_joint(uint16_t id){
+void Joint_System::register_pulley_joint(uint16_t id,uint16_t entityB,bool removeOn_build,bool collide_connect,float ratio_value,float groundA_OffsetX,float groundA_offsetY,float groundB_OffsetX,float groundB_offsetY){
    Pulley_Join_Data joint;
-   joint.header.mask_joint=JointFlag_Pulley;
+   joint.header.entityA=id;
+   joint.header.entityB=entityB;
+   joint.header.removeOnBuild=removeOn_build;
+   joint.groundA_OffsetY=groundA_offsetY;
+   joint.groundA_OffsetX=groundA_OffsetX;
+   joint.groundB_OffsetY=groundB_offsetY;
+   joint.groundB_OffsetX=groundB_OffsetX;
+   joint.ratio_value=ratio_value;
+   joint.header.collide_connect=collide_connect;
    uint16_t next_joint=pulley_joint_list.size();
-   EntitytoDensePulley[id]=next_joint;
+   EntitytoDense[id].PulleyJoint_Index=next_joint;
+   EntitytoDense[id].mask_joint|=(1U<<JointFlag_Pulley);
    pulley_joint_list.push_back(joint);
+}
+
+Distance_Join_Data* Joint_System::get_distance_joint(uint16_t id){
+  if((EntitytoDense[id].mask_joint &(1U <<JointFlag_Distance))!=0){
+     return &distance_joint_list[EntitytoDense[id].DistanceJoint_Index];
+  }
+  return NULL;
+}
+
+//Unregister a Joint
+void Joint_System::unregister_joint(uint16_t id,uint8_t joint_type,int8_t& countTarget_joints,bool requiere_destroy_joint){
+   if(id>=EntitytoDense.size()){
+      return;
+   }
+
+   Joint_Flags flag=static_cast<Joint_Flags>(joint_type);
+   switch(flag){
+     case JointFlag_Distance:{
+         if((EntitytoDense[id].mask_joint & (1U<<joint_type))!=0){
+            uint16_t index=EntitytoDense[id].DistanceJoint_Index;
+            if(index>=distance_joint_list.size()){
+                 return;
+            }
+            if(requiere_destroy_joint){
+               destroy_joint(distance_joint_list[index].header.b2jointPtr);
+            }
+            if(index!=distance_joint_list.size()-1){
+                distance_joint_list[index]=std::move(distance_joint_list.back());
+            }
+            distance_joint_list.pop_back();
+            EntitytoDense[id].DistanceJoint_Index=0xFFFF;
+            EntitytoDense[id].mask_joint&=~(1U<<JointFlag_Distance);
+         }
+         break;
+     }
+     case JointFlag_Revolute:{
+         if((EntitytoDense[id].mask_joint & (1U<<joint_type))!=0){
+            uint16_t index=EntitytoDense[id].RevoluteJoint_Index;
+            if(index>=revolute_joint_list.size()){
+                 return;
+            }
+            if(requiere_destroy_joint){
+                 destroy_joint(revolute_joint_list[index].header.b2jointPtr);
+            }
+            if(index!=revolute_joint_list.size()-1){
+                revolute_joint_list[index]=std::move(revolute_joint_list.back());
+            }
+            revolute_joint_list.pop_back();
+            EntitytoDense[id].RevoluteJoint_Index=0xFFFF;
+            EntitytoDense[id].mask_joint&=~(1U<<JointFlag_Revolute);
+
+         }
+         break;
+     }
+     case JointFlag_Prismatic:{
+         if((EntitytoDense[id].mask_joint & (1U<<joint_type))!=0){
+            uint16_t index=EntitytoDense[id].PrismaticJoint_Index;
+            if(index>=prismatic_joint_list.size()){
+                 return;
+            }
+            if(requiere_destroy_joint){
+               destroy_joint(prismatic_joint_list[index].header.b2jointPtr);
+            }
+            if(index!=prismatic_joint_list.size()-1){
+                prismatic_joint_list[index]=std::move(prismatic_joint_list.back());
+            }
+            prismatic_joint_list.pop_back();
+            EntitytoDense[id].PrismaticJoint_Index=0xFFFF;
+            EntitytoDense[id].mask_joint&=~(1U<<JointFlag_Prismatic);
+
+         }
+         break;
+     }
+     case JointFlag_Weld:{
+         if((EntitytoDense[id].mask_joint & (1U<<joint_type))!=0){
+            uint16_t index=EntitytoDense[id].WeldJoint_Index;
+            if(index>=weld_joint_list.size()){
+                 return;
+            }
+            if(requiere_destroy_joint){
+                destroy_joint(weld_joint_list[index].header.b2jointPtr);
+            }
+            if(index!=weld_joint_list.size()-1){
+                weld_joint_list[index]=std::move(weld_joint_list.back());
+            }
+            weld_joint_list.pop_back();
+            EntitytoDense[id].WeldJoint_Index=0xFFFF;
+            EntitytoDense[id].mask_joint&=~(1U<<JointFlag_Weld);
+
+         }
+         break;
+     }
+     case JointFlag_Pulley:{
+         if((EntitytoDense[id].mask_joint & (1U<<joint_type))!=0){
+            uint16_t index=EntitytoDense[id].PulleyJoint_Index;
+            if(index>=pulley_joint_list.size()){
+                 return;
+            }
+            if(requiere_destroy_joint){
+               destroy_joint(pulley_joint_list[index].header.b2jointPtr);
+            }
+            if(index!=pulley_joint_list.size()-1){
+                pulley_joint_list[index]=std::move(pulley_joint_list.back());
+            }
+            pulley_joint_list.pop_back();
+            EntitytoDense[id].PulleyJoint_Index=0xFFFF;
+            EntitytoDense[id].mask_joint&=~(1U<<JointFlag_Pulley);
+
+         }
+         break;
+     }
+     default:break;
+   }
+   //Revision Over How Many Joints are Left
+   uint8_t temp_mask=EntitytoDense[id].mask_joint;
+   for(uint8_t i=0;i<JointFlag_count;i++){
+      if((temp_mask & (1U<<i))!=0){
+          countTarget_joints+=1;
+      }
+   }
+
+}
+Revolute_Join_Data* Joint_System::get_revolute_joint(uint16_t id){
+  if((EntitytoDense[id].mask_joint & (1U<<JointFlag_Revolute))!=0){
+     return &revolute_joint_list[EntitytoDense[id].RevoluteJoint_Index];
+  }
+  return NULL;
+}
+Prismatic_Join_Data* Joint_System::get_prismatic_joint(uint16_t id){
+  if((EntitytoDense[id].mask_joint & (1U<<JointFlag_Prismatic))!=0){
+     return &prismatic_joint_list[EntitytoDense[id].PrismaticJoint_Index];
+  }
+  return NULL;
+}
+Weld_Join_Data* Joint_System::get_weld_joint(uint16_t id){
+   if((EntitytoDense[id].mask_joint & (1U<<JointFlag_Weld))!=0){
+     return &weld_joint_list[EntitytoDense[id].WeldJoint_Index];
+  }
+  return NULL;
+}
+Pulley_Join_Data* Joint_System::get_pulley_joint(uint16_t id){
+   if((EntitytoDense[id].mask_joint & (1U<<JointFlag_Pulley))!=0){
+     return &pulley_joint_list[EntitytoDense[id].PulleyJoint_Index];
+  }
+  return NULL;
 }
 
 //RigidBody System Methods
@@ -238,7 +410,7 @@ void RigidBody_System::free_system(){
 }
 
 //Register a Body
-void RigidBody_System::register_body(uint16_t id,float mss,float grav_scale,float damp,float angular_damping,bool activ,bool kinematic,bool sleep,bool lock_rot){
+void RigidBody_System::register_body(uint16_t id,float mss,float grav_scale,float damp,float angular_damping,bool activ,uint8_t bd_type,bool sleep,bool lock_rot){
    RigidBody_Data body;
    body.mass=mss;
    body.gravity_scale=grav_scale;
@@ -250,7 +422,7 @@ void RigidBody_System::register_body(uint16_t id,float mss,float grav_scale,floa
    body.active=activ;
    body.can_sleep=sleep;
    body.lock_rotations=lock_rot;
-   body.is_kinematic=kinematic;
+   body.bd_type=bd_type;
    body.damping=damp;
    body.angular_damping=angular_damping;
    uint16_t next_id=list_bodies.size();

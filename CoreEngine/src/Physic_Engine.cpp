@@ -86,6 +86,7 @@ void Physic_Engine_System::Init(Scene* target_scene,float gravity,float grav_dir
    world=new b2World(gravity_dir);
    listener=new contactListener(target_scene,this);
    world->SetContactListener(listener);
+   target_scene->get_joint_sys()->Init(this);
    accumul_steps=0;
    time_steps=1.0/60.0f;
    posIterations=3;
@@ -104,15 +105,17 @@ void Physic_Engine_System::loadWorld(Scene* target_scene){
        return;
    }
    reset_world();
+   destroy_joint_queue.clear();
    Physic_Material_System* physic_materials=target_scene->get_physic_material_sys();
    Transform_System* transform_sys=target_scene->get_transform_sys();
    Collider_System* collider_sys=target_scene->get_collider_sys();
    RigidBody_System* rigidbody_sys=target_scene->get_rigidbody_sys();
 
    uint16_t count_entities=target_scene->get_count_entities();
+   std::vector<uint16_t> has_joint;
    for(uint16_t i=0;i<count_entities;i++){
        Transform_Data* transform_entity=transform_sys->get_transform(i);
-       uint32_t mask_entity=target_scene->get_mask(i);
+       std::bitset<64> mask_entity=target_scene->get_mask(i);
        if(HasComponentBit(mask_entity,components_types::COLLIDER_COMP)==false){
             continue;
        }
@@ -138,32 +141,35 @@ void Physic_Engine_System::loadWorld(Scene* target_scene){
        half_sz_x=Converter::pixelToMetter(half_sz_x);
        half_sz_y=Converter::pixelToMetter(half_sz_y);
        b2BodyDef bddefs;
-       float angle=Math_G::Wrap_Angle(Math_G::to_rad(transform_entity->angle))*-1;
+       float angle=Math_G::Wrap_Angle(Math_G::to_rad(transform_entity->angle));
        float mass=0.0;
        bddefs.type=b2BodyType::b2_staticBody;
        RigidBody_Data* rigidbody_dat=NULL;
        if(HasComponentBit(mask_entity,components_types::RIGIDBODY_COMP)==true){
 
           rigidbody_dat=rigidbody_sys->get_body(i);
-          if(rigidbody_dat->is_kinematic==true){
-              bddefs.type=b2BodyType::b2_kinematicBody;
+          switch(rigidbody_dat->bd_type){
+              case BODY_DINAMIC: bddefs.type=b2BodyType::b2_dynamicBody;break;
+              case BODY_KINEMATIC: bddefs.type=b2BodyType::b2_kinematicBody;
           }
-          else{
-              bddefs.type=b2BodyType::b2_dynamicBody;
-          }
+
           bddefs.allowSleep=rigidbody_dat->can_sleep;
           bddefs.gravityScale=rigidbody_dat->gravity_scale;
           bddefs.angle=angle;
+          std::cout<<angle<<std::endl;
           bddefs.bullet=false;
           bddefs.fixedRotation=rigidbody_dat->lock_rotations;
           mass=rigidbody_dat->mass;
           bddefs.linearDamping=rigidbody_dat->damping;
           bddefs.angularDamping=rigidbody_dat->angular_damping;
           bddefs.enabled=rigidbody_dat->active;
+          if(HasComponentBit(mask_entity,JOINT_COMP)){
+              has_joint.push_back(i);
+          }
        }
 
-       float x=Converter::pixelToMetter(transform_entity->x)+half_sz_x;
-       float y=Converter::pixelToMetter(transform_entity->y)-half_sz_y;
+       float x=Converter::pixelToMetter(transform_entity->x);
+       float y=Converter::pixelToMetter(transform_entity->y);
        bddefs.position=b2Vec2(x,y);
        b2Body* bd=world->CreateBody(&bddefs);
        if(bd==NULL){
@@ -176,8 +182,96 @@ void Physic_Engine_System::loadWorld(Scene* target_scene){
           rigidbody_dat->offsetCenterY=half_sz_y;
        }
        build_fixture(bd,physic_materials,collider_entity,mass,Math_G::to_rad(transform_entity->angle),i);
+
        bd->GetUserData().pointer=static_cast<uintptr_t>(i);
 
+   }
+   Joint_System* joint_sys=target_scene->get_joint_sys();
+   for (uint16_t index:has_joint){
+       RigidBody_Data* rbA=rigidbody_sys->get_body(index);
+       if(rbA==NULL){
+         continue;
+       }
+       Distance_Join_Data* distance_joint=joint_sys->get_distance_joint(index);
+       Revolute_Join_Data* revolute_joint=joint_sys->get_revolute_joint(index);
+       Prismatic_Join_Data* prismatic_joint=joint_sys->get_prismatic_joint(index);
+       Weld_Join_Data* weld_joint=joint_sys->get_weld_joint(index);
+       Pulley_Join_Data* pulley_joint=joint_sys->get_pulley_joint(index);
+       if(distance_joint!=NULL){
+         std::bitset<64> maskB=target_scene->get_mask(distance_joint->header.entityB);
+         if(HasComponentBit(maskB,RIGIDBODY_COMP)==false){
+            continue;
+         }
+
+         RigidBody_Data* rbB=rigidbody_sys->get_body(distance_joint->header.entityB);
+         if(rbB==NULL){
+             continue;
+         }
+         add_jointToworld(distance_joint,rbA->b2bodyPtr,rbB->b2bodyPtr);
+         if(distance_joint->header.removeOnBuild){
+            target_scene->remove_Jointcomponent(index,JointFlag_Distance);
+         }
+       }
+       if(revolute_joint!=NULL){
+
+           std::bitset<64> maskB=target_scene->get_mask(revolute_joint->header.entityB);
+           if(HasComponentBit(maskB,RIGIDBODY_COMP)==false){
+              continue;
+           }
+           RigidBody_Data* rbB=rigidbody_sys->get_body(revolute_joint->header.entityB);
+           if(rbB==NULL){
+               continue;
+           }
+           add_jointToworld(revolute_joint,rbA->b2bodyPtr,rbB->b2bodyPtr);
+           if(revolute_joint->header.removeOnBuild){
+               target_scene->remove_Jointcomponent(index,JointFlag_Revolute);
+           }
+       }
+       if(prismatic_joint!=NULL){
+
+           std::bitset<64> maskB=target_scene->get_mask(prismatic_joint->header.entityB);
+           if(HasComponentBit(maskB,RIGIDBODY_COMP)==false){
+              continue;
+           }
+           RigidBody_Data* rbB=rigidbody_sys->get_body(prismatic_joint->header.entityB);
+           if(rbB==NULL){
+               continue;
+           }
+           add_jointToworld(prismatic_joint,rbA->b2bodyPtr,rbB->b2bodyPtr);
+           if(prismatic_joint->header.removeOnBuild){
+              target_scene->remove_Jointcomponent(index,JointFlag_Prismatic);
+           }
+       }
+       if(weld_joint!=NULL){
+           std::bitset<64> maskB=target_scene->get_mask(weld_joint->header.entityB);
+
+           if(HasComponentBit(maskB,RIGIDBODY_COMP)==false){
+              continue;
+           }
+           RigidBody_Data* rbB=rigidbody_sys->get_body(weld_joint->header.entityB);
+           if(rbB==NULL){
+               continue;
+           }
+           add_jointToworld(weld_joint,rbA->b2bodyPtr,rbB->b2bodyPtr);
+           if(weld_joint->header.removeOnBuild){
+            target_scene->remove_Jointcomponent(index,JointFlag_Weld);
+           }
+       }
+       if(pulley_joint!=NULL){
+
+           std::bitset<64> maskB=target_scene->get_mask(pulley_joint->header.entityB);
+           if(HasComponentBit(maskB,RIGIDBODY_COMP)==false){
+              continue;
+           }
+           RigidBody_Data* rbB=rigidbody_sys->get_body(pulley_joint->header.entityB);
+           if(rbB==NULL){
+               continue;
+           }
+           add_jointToworld(pulley_joint,rbA->b2bodyPtr,rbB->b2bodyPtr);
+           if(pulley_joint->header.removeOnBuild){
+               target_scene->remove_Jointcomponent(index,JointFlag_Pulley);
+           }
+       }
    }
 }
 
@@ -190,6 +284,7 @@ void Physic_Engine_System::reset_world(){
           b2Joint* jnt=joints->joint;
           jnt->GetUserData().pointer=NULL;
           joints=joints->next;
+          world->DestroyJoint(jnt);
       }
       b2Fixture* target_fixture=old_bds->GetFixtureList();
       while(target_fixture!=NULL){
@@ -209,6 +304,7 @@ void Physic_Engine_System::reset_world(){
 //Free Memory of System
 void Physic_Engine_System::clear_world(){
    reset_world();
+   destroy_joint_queue.clear();
    if(world!=nullptr){
       delete world;
       world=nullptr;
@@ -225,11 +321,13 @@ void Physic_Engine_System::update(Scene* target_scene){
    Transform_System* transform_sys=target_scene->get_transform_sys();
    Collider_System* collider_sys=target_scene->get_collider_sys();
    RigidBody_System* rigidbody_sys=target_scene->get_rigidbody_sys();
-  Physic_Material_System* physic_material_sys=target_scene->get_physic_material_sys();
+   Physic_Material_System* physic_material_sys=target_scene->get_physic_material_sys();
+   Joint_System* joint_sys=target_scene->get_joint_sys();
+
    while(bd!=NULL){
       uint16_t id=static_cast<uint16_t>(bd->GetUserData().pointer);
       Transform_Data* transform_entity=transform_sys->get_transform(id);
-      uint32_t mask=target_scene->get_mask(id);
+      std::bitset<64> mask=target_scene->get_mask(id);
       if(HasComponentBit(mask,components_types::COLLIDER_COMP)==false){
            bd=bd->GetNext();
            continue;
@@ -245,10 +343,10 @@ void Physic_Engine_System::update(Scene* target_scene){
          bool is_sensor=(id_fixture==-1)?false:true;
 
          if(is_sensor){
-           b2Filter filter_val=fixtures->GetFilterData();
-        //   filter_val.maskBits=collider->sensor_mask;
-        //   filter_val.categoryBits=collider->category_bits_sensor;
-          // fixtures->SetFilterData(filter_val);
+             b2Filter filter_val=fixtures->GetFilterData();
+             filter_val.maskBits=collider->Additional_fixtures[id_fixture].mask_fixture;
+             filter_val.categoryBits=collider->Additional_fixtures[id_fixture].category_bits_fixture;
+             fixtures->SetFilterData(filter_val);
          }
          else{
            fixtures->SetSensor(collider->is_trigger);
@@ -264,40 +362,45 @@ void Physic_Engine_System::update(Scene* target_scene){
          fixtures=fixtures->GetNext();
       }
 
-      //Update Constraints data from Joints
-      b2JointEdge* jnts=bd->GetJointList();
-      while(jnts!=NULL){
-          b2Joint* jnt_target=jnts->joint;
-          if(jnt_target!=NULL){
-            //Joint_Component* joint_comp=reinterpret_cast<Joint_Component*>(jnt_target->GetUserData().pointer);
-            //update_joinData(joint_comp,jnt_target);
-          }
-          jnts=jnts->next;
-      }
-
       //Update RigidBody and Transform
       if(HasComponentBit(mask,RIGIDBODY_COMP)==true){
-          RigidBody_Data* rb=rigidbody_sys->get_body(id);
-          if(rb->is_kinematic==true){
-              bd->SetType(b2BodyType::b2_kinematicBody);
+          b2Vec2 vel_bd=bd->GetLinearVelocity();
+          if(vel_bd.LengthSquared()>limit_forceSquare){
+            vel_bd.Normalize();
+            vel_bd*=limit_forceBodies;
+            bd->SetLinearVelocity(vel_bd);
           }
-           else{
-              bd->SetType(b2BodyType::b2_dynamicBody);
-           }
+          RigidBody_Data* rb=rigidbody_sys->get_body(id);
+          switch(rb->bd_type){
+             case BODY_DINAMIC: bd->SetType(b2BodyType::b2_dynamicBody);break;
+             case BODY_KINEMATIC:bd->SetType(b2BodyType::b2_kinematicBody);break;
+             case BODY_STATIC:bd->SetType(b2BodyType::b2_staticBody);break;
+             default:break;
+          }
            bd->SetGravityScale(rb->gravity_scale);
            b2Vec2 final_force=bd->GetLinearVelocity();
            rb->Last_ForceX=final_force.x;
            rb->Last_ForceY=final_force.y;
            float currentRadians=bd->GetAngle();
-
            transform_entity->accumlated_radians=Math_G::Wrap_AngleAccumulated(currentRadians,transform_entity->lastRadians,transform_entity->accumlated_radians);
            transform_entity->lastRadians=currentRadians;
            float new_angle=Math_G::to_degree(transform_entity->accumlated_radians);
+           float renderAngle=fmod(-new_angle,360.0);
+           //Update Joints if is Neccesary
+           if(HasComponentBit(mask,JOINT_COMP)){
+               update_joinData(id,joint_sys);
+           }
+           if(renderAngle<0){
+              renderAngle+=360;
+           }
+
            b2Vec2 new_pos=bd->GetPosition();
-           transform_entity->x=Converter::MetterToPixel(new_pos.x-rb->offsetCenterX);
-           transform_entity->y=Converter::MetterToPixel(new_pos.y+rb->offsetCenterY);
-           transform_entity->angle=new_angle;
+           transform_entity->x=Converter::MetterToPixel(new_pos.x);
+           transform_entity->y=Converter::MetterToPixel(new_pos.y);
+           transform_entity->angle=renderAngle;
+
       }
+
       bool change_pos=bd->IsAwake();
       if(change_pos){
          target_scene->transform_change(id);
@@ -311,6 +414,7 @@ void Physic_Engine_System::update_world(float dt,Scene* target_scene){
    if(dt>1.0){
       return;
    }
+   verify_destroy_joints();
    accumul_steps+=dt;
    if(accumul_steps>0.2){
        accumul_steps=0.2;
@@ -349,12 +453,11 @@ void Physic_Engine_System::update_world(float dt,Scene* target_scene){
    RigidBody_System* rigid_body_sys=target_scene->get_rigidbody_sys();
    while(bd!=NULL){
       uint16_t id=static_cast<uint16_t>(bd->GetUserData().pointer);
-      uint32_t mask_target=target_scene->get_mask(id);
+      std::bitset<64> mask_target=target_scene->get_mask(id);
 
       if(HasComponentBit(mask_target,components_types::RIGIDBODY_COMP)==true){
           RigidBody_Data* rb=rigid_body_sys->get_body(id);
           b2Vec2 force_bd=bd->GetLinearVelocity();
-          b2Vec2 pos=bd->GetPosition();
           rb->Last_ForceX=force_bd.x;
           rb->Last_ForceY=force_bd.y;
           float angular_vel=bd->GetAngularVelocity();
@@ -364,9 +467,98 @@ void Physic_Engine_System::update_world(float dt,Scene* target_scene){
    }
 }
 
-//Add a Joint to the World
-void Physic_Engine_System::add_jointsToworld(){
 
+//Methods for Add a Joint to the World
+void Physic_Engine_System::add_jointToworld(Distance_Join_Data* joint_data,b2Body* bdA,b2Body* bdB){
+   if(joint_data==NULL || bdA==NULL || bdB==NULL){
+     return;
+   }
+   b2DistanceJointDef defs;
+   defs.maxLength=Converter::pixelToMetter(joint_data->maxdistance);
+   defs.minLength=Converter::pixelToMetter(joint_data->mindistance);
+   b2Vec2 anchorA(Converter::pixelToMetter(joint_data->anchorA_x),Converter::pixelToMetter(joint_data->anchorA_y));
+   b2Vec2 anchorB(Converter::pixelToMetter(joint_data->anchorB_x),Converter::pixelToMetter(joint_data->anchorB_y));
+   defs.localAnchorA=anchorA;
+   defs.localAnchorB=anchorB;
+   defs.stiffness=joint_data->stiffness;
+   defs.damping=joint_data->damping;
+   defs.bodyA=bdA;
+   defs.bodyB=bdB;
+   defs.collideConnected=joint_data->header.collide_connect;
+   b2Joint* joint=world->CreateJoint(&defs);
+   joint_data->header.b2jointPtr=joint;
+
+}
+
+void Physic_Engine_System::add_jointToworld(Revolute_Join_Data* joint_data,b2Body* bdA,b2Body* bdB){
+    if(joint_data==NULL || bdA==NULL || bdB==NULL){
+         return;
+    }
+    b2RevoluteJointDef defs;
+    b2Vec2 pivot=bdB->GetWorldCenter();
+    defs.Initialize(bdA,bdB,pivot);
+    defs.enableLimit=joint_data->enableLimits;
+    defs.enableMotor=joint_data->enableMotor;
+    defs.lowerAngle=Math_G::Wrap_Angle(Math_G::to_rad(joint_data->lowerAngle));
+    defs.maxMotorTorque=joint_data->maxMotorTorque;
+    defs.upperAngle=Math_G::Wrap_Angle(Math_G::to_rad(joint_data->upperAngle));
+    defs.motorSpeed=joint_data->motorSpeed;
+    defs.referenceAngle=Math_G::Wrap_Angle(Math_G::to_rad(joint_data->ref_angle));
+    defs.collideConnected=joint_data->header.collide_connect;
+    b2Joint* joint=world->CreateJoint(&defs);
+    joint_data->header.b2jointPtr=joint;
+
+}
+void Physic_Engine_System::add_jointToworld(Prismatic_Join_Data* joint_data,b2Body* bdA,b2Body* bdB){
+    if(joint_data==NULL || bdA==NULL || bdB==NULL){
+         return;
+    }
+    b2PrismaticJointDef defs;
+    defs.Initialize(bdA,bdB,bdB->GetWorldCenter(),b2Vec2(-1*joint_data->axisX,-1*joint_data->axisY));
+    defs.enableLimit=joint_data->enableLimits;
+    defs.enableMotor=joint_data->enableMotor;
+    defs.lowerTranslation=Converter::pixelToMetter(joint_data->lowerTranslation);
+    defs.upperTranslation=Converter::pixelToMetter(joint_data->upperTranslation);
+    defs.maxMotorForce=joint_data->maxMotorForce;
+    defs.motorSpeed=joint_data->motorSpeed;
+    defs.referenceAngle=Math_G::Wrap_Angle(Math_G::to_rad(joint_data->angle));
+    defs.collideConnected=joint_data->header.collide_connect;
+    b2Joint* joint=world->CreateJoint(&defs);
+    joint_data->header.b2jointPtr=joint;
+}
+void Physic_Engine_System::add_jointToworld(Weld_Join_Data* joint_data,b2Body* bdA,b2Body* bdB){
+    if(joint_data==NULL || bdA==NULL || bdB==NULL){
+         return;
+    }
+    b2WeldJointDef defs;
+    defs.bodyA=bdA;
+    defs.bodyB=bdB;
+    defs.Initialize(bdA,bdB,bdB->GetWorldCenter());
+    defs.stiffness=joint_data->stiffnes;
+    defs.damping=joint_data->damping;
+    defs.referenceAngle=Math_G::Wrap_Angle(Math_G::to_rad(joint_data->ref_angle));
+
+    defs.collideConnected=joint_data->header.collide_connect;
+    b2Joint* joint=world->CreateJoint(&defs);
+    joint_data->header.b2jointPtr=joint;
+}
+void Physic_Engine_System::add_jointToworld(Pulley_Join_Data* joint_data,b2Body* bdA,b2Body* bdB){
+    if(joint_data==NULL || bdA==NULL || bdB==NULL){
+        return;
+    }
+    b2PulleyJointDef defs;
+    b2Vec2 centerA=bdA->GetWorldCenter();
+    b2Vec2 centerB=bdB->GetWorldCenter();
+    b2Vec2 groundA(centerA.x,centerA.y+Converter::pixelToMetter(joint_data->groundA_OffsetY));
+    b2Vec2 groundB(centerB.x,centerB.y+Converter::pixelToMetter(joint_data->groundB_OffsetY));
+    float ratio_val=joint_data->ratio_value;
+    if(ratio_val<1.0){
+        ratio_val=1.0;
+    }
+    defs.collideConnected=joint_data->header.collide_connect;
+    defs.Initialize(bdA,bdB,groundA,groundB,centerA,centerB,ratio_val);
+    b2Joint* joint=world->CreateJoint(&defs);
+    joint_data->header.b2jointPtr=joint;
 }
 
 //Build the Fixtures of Body
@@ -489,15 +681,94 @@ void Physic_Engine_System::build_fixture(b2Body* bd,Physic_Material_System* phys
 
 }
 
-//Update Join Data Values
-void Physic_Engine_System::update_joinData(b2Joint* jnt){
+//Request Destroy a Joint
+void Physic_Engine_System::request_destroy_joint(b2Joint* jnt){
+   destroy_joint_queue.push_back(jnt);
+}
 
+//Verify if Is Possible Destroy Any Joint Requested to Destroy
+void Physic_Engine_System::verify_destroy_joints(){
+   if(world->IsLocked()){
+       return;
+   }
+   for(uint8_t i=0;i<destroy_joint_queue.size();i++){
+       world->DestroyJoint(destroy_joint_queue[i]);
+   }
+   destroy_joint_queue.clear();
+}
+
+//Update Join Data Values
+void Physic_Engine_System::update_joinData(uint16_t index,Joint_System* joint_sys){
+  if(joint_sys==NULL){
+      return;
+  }
+  Distance_Join_Data* distance=joint_sys->get_distance_joint(index);
+  Revolute_Join_Data* revolute=joint_sys->get_revolute_joint(index);
+  Prismatic_Join_Data* prismatic=joint_sys->get_prismatic_joint(index);
+  Weld_Join_Data* weld=joint_sys->get_weld_joint(index);
+  if(distance!=NULL){
+     b2Joint* jnt=distance->header.b2jointPtr;
+     if(jnt==NULL){
+         return;
+     }
+     b2DistanceJoint* target=static_cast<b2DistanceJoint*>(jnt);
+     target->SetMaxLength(Converter::pixelToMetter(distance->maxdistance));
+     target->SetMinLength(Converter::pixelToMetter(distance->mindistance));
+     target->SetDamping(distance->damping);
+     target->SetStiffness(distance->stiffness);
+  }
+  if(revolute!=NULL){
+    b2Joint* jnt=revolute->header.b2jointPtr;
+    if(jnt==NULL){
+         return;
+    }
+    b2RevoluteJoint* target=static_cast<b2RevoluteJoint*>(jnt);
+    target->EnableLimit(revolute->enableLimits);
+    target->EnableMotor(revolute->enableMotor);
+    target->SetMotorSpeed(revolute->motorSpeed);
+    target->SetMaxMotorTorque(revolute->maxMotorTorque);
+    float lower=Math_G::Wrap_Angle(Math_G::to_rad(revolute->lowerAngle));
+    float upper=Math_G::Wrap_Angle(Math_G::to_rad(revolute->upperAngle));
+    target->SetLimits(lower,upper);
+  }
+  if(prismatic!=NULL){
+    b2Joint* jnt=prismatic->header.b2jointPtr;
+    if(jnt==NULL){
+         return;
+    }
+    b2PrismaticJoint* target=static_cast<b2PrismaticJoint*>(jnt);
+    target->EnableMotor(prismatic->enableMotor);
+    target->EnableLimit(prismatic->enableLimits);
+    target->SetMaxMotorForce(prismatic->maxMotorForce);
+    target->SetMotorSpeed(prismatic->motorSpeed);
+    float lower=Converter::pixelToMetter(prismatic->lowerTranslation);
+    float upper=Converter::pixelToMetter(prismatic->upperTranslation);
+    target->SetLimits(lower,upper);
+  }
+  if(weld!=NULL){
+    b2Joint* jnt=weld->header.b2jointPtr;
+    if(jnt==NULL){
+         return;
+    }
+    b2WeldJoint* target=static_cast<b2WeldJoint*>(jnt);
+    target->SetDamping(weld->damping);
+    target->SetStiffness(weld->stiffnes);
+  }
+}
+
+//Change Gravity Direction
+void Physic_Engine_System::change_gravityDir(float x_grav,float y_grav,float gravity_val){
+   b2Vec2 grav_dir(x_grav*gravity_val,y_grav*gravity_val);
+   if(world==NULL){
+       return;
+   }
+   world->SetGravity(grav_dir);
 }
 
 //Make a RayCast and Return a RayCast Hit
 RayCastHit Physic_Engine_System::RayCast(float x ,float y ,float dir_x,float dir_y,float magnitude){
    RayCastHit res;
-   /*x=Converter::pixelToMetter(x);
+   x=Converter::pixelToMetter(x);
    y=Converter::pixelToMetter(y);
    res.hit=false;
    res.hit_entity=0;
@@ -521,7 +792,7 @@ RayCastHit Physic_Engine_System::RayCast(float x ,float y ,float dir_x,float dir
             res.hit_entity=entity;
         }
       }
-   }*/
+   }
    return res;
 }
 
@@ -535,804 +806,3 @@ void Physic_Engine_System::add_TriggerEvent(uint16_t entityA,uint16_t entityB,bo
    triggers_queue.push_back({entityA,entityB,begin_ev});
 }
 
-/*
-void Physic_Engine::define_world(){
-   //set initial gravity
-
-   gravity_val.Set(grav_dir.x,grav_dir.y);
-   world.SetGravity(gravity_val);
-
-   for(int i=0;i<remove_joint_requests.size();i++){
-       remove_joint_requests.at(i)=NULL;
-   }
-   remove_joint_requests.clear();
-   joint_requests.clear();
-   b2Body* old_bds=world.GetBodyList();
-   while(old_bds!=NULL){
-      b2JointEdge* joints=old_bds->GetJointList();
-      while(joints!=NULL){
-          b2Joint* jnt=joints->joint;
-          jnt->GetUserData().pointer=NULL;
-          joints=joints->next;
-      }
-      b2Fixture* old_fixtures=old_bds->GetFixtureList();
-      while(old_fixtures!=NULL){
-          old_fixtures->GetUserData().pointer=NULL;
-          old_fixtures=old_fixtures->GetNext();
-      }
-      old_bds->GetUserData().pointer=NULL;
-      world.DestroyBody(old_bds);
-      old_bds=old_bds->GetNext();
-   }
-
-   vector<Game_Object*> list_objs=Game_Object_Manager::get_allObjs_Pointers();
-   vector<Game_Object*>::iterator it;
-   vector<Joint_Component*> joints_pendents;
-
-   for(it=list_objs.begin();it!=list_objs.end();it++){
-       Game_Object* g=*it;
-       if(g!=NULL){
-          Component_Store* comps=g->get_components();
-          if(comps!=NULL){
-              Transform* transf=comps->get_Transform();
-              vector<Collider*> col_list=comps->get_Collider();
-              RigidBody* rb=comps->get_rigidBody();
-              vector<Joint_Component*> joints_target=comps->get_Joints();
-              Proyectil* projectil_comp=comps->get_Proyectil();
-              Render* render_comp=comps->get_Render();
-              if(transf!=NULL && col_list.size()>0){
-
-
-                  //get the data for build the body
-                  Collider* main_collider=get_mainCollider(col_list);
-                  Figure main_fig=main_collider->get_figure();
-                  Vector2 halfSz_main_fig=main_fig.get_halfDim();
-                  Vector2 pos_obj=transf->Get_Position();
-                  Vector2 Halfsz_render=Vector2(0,0);
-                  Vector2 center_offset=Vector2(0,0);
-                  if(render_comp!=NULL){
-                      Vector2 scal=transf->Get_Scale();
-                      SDL_Rect r_spr=render_comp->get_sprite().get_rect_sprite();
-                      Halfsz_render.x=r_spr.w*scal.x*0.5;
-                      Halfsz_render.y=r_spr.h*scal.y*0.5;
-                  }
-
-                  //Convert Pixels to Metters format
-                  pos_obj.x=Converter::pixelToMetter(pos_obj.x);
-                  pos_obj.y=Converter::pixelToMetter(pos_obj.y);
-                  if(Halfsz_render.x!=0 && Halfsz_render.y!=0){
-                    center_offset=Vector2(Halfsz_render.x,-1*Halfsz_render.y);
-                    Halfsz_render.x=Converter::pixelToMetter(Halfsz_render.x);
-                    Halfsz_render.y=Converter::pixelToMetter(Halfsz_render.y);
-                    pos_obj.x=pos_obj.x+Halfsz_render.x;
-                    pos_obj.y=pos_obj.y-Halfsz_render.y;
-
-                  }
-                  else{
-                     center_offset=Vector2(halfSz_main_fig.x,-1*halfSz_main_fig.y);
-                     halfSz_main_fig.x=Converter::pixelToMetter(halfSz_main_fig.x);
-                     halfSz_main_fig.y=Converter::pixelToMetter(halfSz_main_fig.y);
-                     pos_obj.x=(pos_obj.x+halfSz_main_fig.x);
-                     pos_obj.y=(pos_obj.y-halfSz_main_fig.y);
-                  }
-                  //Build the Body
-                  float mass=0.0f;
-                  b2BodyDef defs;
-                  defs.position.Set(pos_obj.x,pos_obj.y);
-                  float angl=Math_G::to_rad(transf->get_angle());
-                  angl=Math_G::Wrap_Angle(angl);
-                  angl*=-1;
-                  defs.angle=angl;
-                  defs.userData.pointer= reinterpret_cast<uintptr_t>(g);
-                  if(rb!=NULL){
-                    defs.type=b2_dynamicBody;
-                    defs.fixedRotation=rb->get_lock_Rotation();
-                    defs.angularDamping=rb->get_angular_Damping();
-                    defs.linearDamping=rb->get_damping();
-                    if(rb->is_kinematic()){
-                         defs.type=b2_kinematicBody;
-                    }
-                    mass=rb->get_mass();
-                    defs.allowSleep=rb->Permit_Sleep();
-                  }
-                  if(projectil_comp!=NULL){
-                     if(projectil_comp->get_force()>=FORCE_BULLET){
-                         defs.bullet=true;
-                     }
-                  }
-                  b2Body* bd=world.CreateBody(&defs);
-
-                  //Build the fixtures
-                  for(int i=0;i<col_list.size();i++){
-                      Collider* target_col=col_list.at(i);
-                      if(target_col!=NULL){
-                         target_col->set_centerBd(center_offset);
-                         build_fixture(bd,target_col,mass,angl,col_list.size(),i);
-                      }
-                  }
-
-                  //add Joints to Build After if is Necceary
-                  if(joints_target.size()>0){
-                      for(int i=0;i<joints_target.size();i++){
-                          joints_pendents.push_back(joints_target.at(i));
-                      }
-                  }
-               }
-
-          }
-       }
-   }
-
-   //build joints of Objects
-   for(int i=0;i<joints_pendents.size();i++){
-       Joint_Component* temp_joint=joints_pendents.at(i);
-       if(temp_joint!=NULL){
-          add_joint(temp_joint);
-       }
-   }
-}
-
-
-//Get the Main Collider of a Body
-Collider* Physic_Engine::get_mainCollider(vector<Collider*> list_cols){
-   Collider* res=NULL;
-   if(list_cols.size()==1){
-       return list_cols.at(0);
-   }
-   for(int i=0;i<list_cols.size();i++){
-      Collider* temp_col=list_cols.at(i);
-      if(temp_col!=NULL){
-          if(temp_col->is_mainCollider()){
-              res=list_cols.at(i);
-              i=list_cols.size();
-          }
-      }
-   }
-   return res;
-}
-
-
-//update the world with objects values
-void Physic_Engine::update_world(){
-
-   b2Body* bd=world.GetBodyList();
-   while(bd!=NULL){
-      Game_Object* g=reinterpret_cast<Game_Object*>(bd->GetUserData().pointer);
-      if(g!=NULL){
-
-          Component_Store* comps=g->get_components();
-          Transform* transf=NULL;
-          Collider* col=NULL;
-          RigidBody* rb=NULL;
-          Render* render_comp=NULL;
-          if(comps!=NULL){
-             transf=comps->get_Transform();
-             vector<Collider*> col_list=comps->get_Collider();
-             col=get_mainCollider(col_list);
-             rb=comps->get_rigidBody();
-             render_comp=comps->get_Render();
-          }
-          if(transf!=NULL && col!=NULL){
-             b2Fixture* fixtures= bd->GetFixtureList();
-
-             bool active_obj=g->is_active();
-             if(active_obj==false || g->is_updated()==false){
-                  bd->SetType(b2BodyType::b2_staticBody);
-             }
-             else{
-                if(rb!=NULL){
-                    bd->SetAngularDamping(rb->get_angular_Damping());
-                    bd->SetLinearDamping(rb->get_damping());
-                    if(rb->is_kinematic()){
-                        bd->SetType(b2BodyType::b2_kinematicBody);
-                    }
-                    else if(rb->is_active()==false){
-                        bd->SetType(b2BodyType::b2_staticBody);
-                    }
-                    else{
-                        bd->SetType(b2BodyType::b2_dynamicBody);
-                    }
-                }
-                else{
-                    bd->SetType(b2BodyType::b2_staticBody);
-                }
-
-             }
-
-             //Update Fixture data from Collider
-             while(fixtures!=NULL){
-                Collider* col_fixture=reinterpret_cast<Collider*>(fixtures->GetUserData().pointer);
-                if(col_fixture!=NULL){
-                    fixtures->SetSensor(col_fixture->is_trigger());
-                    fixtures->SetFriction(col_fixture->get_material().get_friction());
-                    fixtures->SetRestitution(col_fixture->get_material().get_restitution());
-                    if(active_obj==false || g->is_updated()==false){
-                        b2Filter filter_val=fixtures->GetFilterData();
-                        filter_val.maskBits=0;
-                        filter_val.categoryBits=0;
-                        filter_val.groupIndex=-1;
-                        fixtures->SetFilterData(filter_val);
-                    }
-                    else{
-                       b2Filter filter_val=fixtures->GetFilterData();
-                       filter_val.maskBits=col_fixture->get_mask();
-                       filter_val.categoryBits=col_fixture->get_category_bits();
-                       filter_val.groupIndex=col_fixture->get_layer_Group();
-                       fixtures->SetFilterData(filter_val);
-                    }
-
-                }
-                fixtures=fixtures->GetNext();
-             }
-             //Update Constraints data from Joints
-             b2JointEdge* jnts=bd->GetJointList();
-             while(jnts!=NULL){
-                 b2Joint* jnt_target=jnts->joint;
-                 if(jnt_target!=NULL){
-                     Joint_Component* joint_comp=reinterpret_cast<Joint_Component*>(jnt_target->GetUserData().pointer);
-                     update_joinData(joint_comp,jnt_target);
-                 }
-                 jnts=jnts->next;
-             }
-             int transf_request=transf->require_change();
-             Vector2 offsetBd_Target=col->get_centerBody();
-
-             if(transf_request==REQUEST_TRANSFORM::REQUEST_ALL || transf_request==REQUEST_TRANSFORM::REQUEST_ANGLE){
-                  float next_angle=Math_G::to_rad(transf->get_requestedAngle())*-1;
-                  b2Vec2 requested=bd->GetPosition();
-                  if(transf_request!=REQUEST_TRANSFORM::REQUEST_ANGLE ){
-                     Vector2 temp_offset=Vector2(0,0);
-                     temp_offset.x=Converter::pixelToMetter(offsetBd_Target.x);
-                     temp_offset.y=Converter::pixelToMetter(offsetBd_Target.y);
-                     Vector2 requested_pos_transf=transf->get_requestedPosition();
-                     requested_pos_transf.x=Converter::pixelToMetter(requested_pos_transf.x);
-                     requested_pos_transf.y=Converter::pixelToMetter(requested_pos_transf.y);
-                     requested_pos_transf.x=requested_pos_transf.x+temp_offset.x;
-                     requested_pos_transf.y=requested_pos_transf.y+temp_offset.y;
-                     requested.Set(requested_pos_transf.x,requested_pos_transf.y);
-                  }
-                  bd->SetTransform(requested,next_angle);
-                  transf->clear_requestChange();
-
-             }
-             b2Vec2 new_pos=bd->GetPosition();
-             new_pos.x=Converter::MetterToPixel(new_pos.x);
-             new_pos.y=Converter::MetterToPixel(new_pos.y);
-
-            // Vector2 half_szCol=col->get_figure().get_halfDim();
-             new_pos.x=new_pos.x-offsetBd_Target.x;
-             new_pos.y=new_pos.y-offsetBd_Target.y;
-
-             if(rb!=NULL){
-
-                Vector2 impulse=rb->get_ImpulseForce();
-                float grav_scale=rb->get_gravity();
-                float angular_impulse=rb->get_AngularImpulse();
-                if(rb->require_newForce()){
-
-                    Vector2 force_rb=rb->get_LinearForce();
-                    b2Vec2 linear_force;
-                    linear_force.Set(force_rb.x,force_rb.y);
-                    bd->SetLinearVelocity(linear_force);
-                }
-                if(impulse.x!=0 || impulse.y!=0){
-                      b2Vec2 impulse_F;
-                      impulse_F.Set(impulse.x,impulse.y);
-                      if(rb->get_lock_Rotation()==true){
-                         bd->ApplyLinearImpulseToCenter(impulse_F,true);
-                      }
-                      else{
-                          Vector2 half_sz=col->get_figure().get_halfDim();
-                          half_sz.x=Converter::pixelToMetter(half_sz.x);
-                          half_sz.y=Converter::pixelToMetter(half_sz.y);
-
-                          b2Vec2 offset;
-                          offset.Set(half_sz.x,half_sz.y);
-                          b2Vec2 center=bd->GetWorldCenter()+offset;
-                          bd->ApplyLinearImpulse(impulse_F,center,true);
-                      }
-
-
-                }
-                if(rb->require_newAngularVel()){
-                    float next_angularVel=rb->get_AngularVelocity();
-                    bd->SetAngularVelocity(next_angularVel);
-                }
-                if(angular_impulse!=0){
-                     bd->ApplyAngularImpulse(angular_impulse,true);
-                }
-                rb->clear_Forces();
-                bd->SetGravityScale(grav_scale);
-                b2Vec2 final_force=bd->GetLinearVelocity();
-                rb->set_bodyForce(Vector2(final_force.x,final_force.y));
-             }
-
-             float new_angle=Math_G::Wrap_Angle(bd->GetAngle()*-1);
-             new_angle=Math_G::to_degree(new_angle);
-
-             b2Vec2 new_pos2=bd->GetPosition();
-             g->update_transform(Vector2(new_pos.x,new_pos.y),new_angle);
-          }
-      }
-      bd=bd->GetNext();
-   }
-
-}
-
-//raycast
-RayCastHit Physic_Engine::RayCast(Vector2 start,Vector2 dir,float magnitud) {
-
-   start.x=Converter::pixelToMetter(start.x);
-   start.y=Converter::pixelToMetter(start.y);
-   RayCastHit res;
-   res.hit=false;
-   res.hit_obj=NULL;
-   RaycastDetection callback=RaycastDetection();
-   b2Vec2 p1(start.x,start.y);
-   Vector2 end_p=start+(Vector2(dir.x*magnitud,dir.y*magnitud));
-   b2Vec2 p2(end_p.x,end_p.y);
-   world.RayCast(&callback,p1,p2);
-   if(callback.hit){
-      b2Vec2 norm=callback.hit_normal;
-      b2Vec2 point=callback.hit_point;
-      b2Fixture* fixture=callback.hit_fixture;
-      res.hit=true;
-      res.normal=Vector2(norm.x,norm.y);
-      Vector2 pt=Vector2(point.x,point.y);
-      pt.x=Converter::MetterToPixel(pt.x);
-      pt.y=Converter::MetterToPixel(pt.y);
-      res.hit_point=pt;
-
-      if(fixture!=NULL){
-        b2Body* bd=fixture->GetBody();
-        if(bd!=NULL){
-            Game_Object* g=reinterpret_cast<Game_Object*>(bd->GetUserData().pointer);
-            res.hit_obj=g;
-        }
-      }
-   }
-   return res;
-
-}
-
-
-// Request to Add a Joint
-void Physic_Engine::add_joint(Joint_Component* joint_target){
-   if(joint_target==NULL){
-      return;
-   }
-   int joint_t=joint_target->get_type();
-   string child_name=joint_target->get_child();
-   string parent_name=joint_target->get_parent();
-   b2JointType typ;
-   b2JointDef joint_defs;
-   joint_defs.userData.pointer=reinterpret_cast<uintptr_t>(joint_target);
-   joint_defs.collideConnected=joint_target->get_collide();
-   switch(joint_t){
-     case JOINT_TYPES::DISTANCE_JOINT:{
-         typ=b2JointType::e_distanceJoint;
-         joint_defs.type=b2JointType::e_distanceJoint;
-         break;
-     }
-     case JOINT_TYPES::REVOLUTE_JOINT:{
-           typ=b2JointType::e_revoluteJoint;
-           joint_defs.type=b2JointType::e_revoluteJoint;
-           break;
-     }
-     case JOINT_TYPES::PRISMATIC_JOINT:{
-          typ=b2JointType::e_prismaticJoint;
-          joint_defs.type=b2JointType::e_prismaticJoint;
-          break;
-     }
-     case JOINT_TYPES::PULLEY_JOINT:{
-          typ=b2JointType::e_pulleyJoint;
-          joint_defs.type=b2JointType::e_pulleyJoint;
-          break;
-     }
-     case JOINT_TYPES::WELD_JOINT:{
-        typ=b2JointType::e_weldJoint;
-        joint_defs.type=b2JointType::e_weldJoint;
-        break;
-     }
-     default:{
-        break;
-     }
-   }
-
-   b2Body* bd_child=NULL;
-   b2Body* bd_parent=NULL;
-   b2Body* body_list=world.GetBodyList();
-   bool valid_child=true;
-   bool valid_bodies=false;
-   while(body_list!=NULL ){
-      Game_Object* g=reinterpret_cast<Game_Object*>(body_list->GetUserData().pointer);
-      if(g!=NULL){
-         if(g->get_name()==child_name){
-             bd_child=body_list;
-         }
-         else if(g->get_name()==parent_name){
-              bd_parent=body_list;
-              b2JointEdge* parent_joints=bd_parent->GetJointList();
-              while(parent_joints!=NULL){
-                  b2Joint* temp_joint=parent_joints->joint;
-                  if(temp_joint!=NULL){
-                     b2Body* temp_bd=temp_joint->GetBodyB();
-                     Game_Object* temp_obj=reinterpret_cast<Game_Object*>(temp_bd->GetUserData().pointer);
-                     if(temp_bd!=NULL && temp_joint->GetType()==typ){
-                        if(temp_obj->get_name()==child_name){
-                            valid_child=false;
-                        }
-                     }
-
-                  }
-                  parent_joints=parent_joints->next;
-              }
-         }
-      }
-      body_list=body_list->GetNext();
-   }
-
-   if(bd_parent!=NULL && bd_child!=NULL){
-      valid_bodies=true;
-   }
-   if(valid_child && valid_bodies){
-      joint_defs.bodyA=bd_parent;
-      joint_defs.bodyB=bd_child;
-      joint_requests.push_back(joint_defs);
-   }
-}
-
-//Add Joint Request to the world
-void Physic_Engine::add_jointsToworld(){
-    if(!world.IsLocked()){
-       vector<b2JointDef>::iterator it;
-       for(it=joint_requests.begin();it!=joint_requests.end();it++){
-           b2JointDef request=*it;
-           b2Body* bdA=request.bodyA;
-           b2Body* bdB=request.bodyB;
-           Joint_Component* joint_comp=reinterpret_cast<Joint_Component*>(request.userData.pointer);
-           if(joint_comp!=NULL ){
-               Vector2 OffsetanchorA=joint_comp->get_anchorOffset_Parent();
-               Vector2 OffsetanchorB=joint_comp->get_anchorOffset_Child();
-               Vector2 groundOffsetA=joint_comp->get_groundOffset_Parent();
-               Vector2 groundOffsetB=joint_comp->get_groundOffset_Child();
-               OffsetanchorA.x=Converter::pixelToMetter(OffsetanchorA.x);
-               OffsetanchorA.y=Converter::pixelToMetter(OffsetanchorA.y);
-               OffsetanchorB.x=Converter::pixelToMetter(OffsetanchorB.x),
-               OffsetanchorB.y=Converter::pixelToMetter(OffsetanchorB.y);
-               groundOffsetA.x=Converter::pixelToMetter(groundOffsetA.x);
-               groundOffsetA.y=Converter::pixelToMetter(groundOffsetA.y);
-               groundOffsetB.x=Converter::pixelToMetter(groundOffsetB.x);
-               groundOffsetB.y=Converter::pixelToMetter(groundOffsetB.y);
-               b2Vec2 anchorA(0,0);
-               b2Vec2 anchorB(0,0);
-               b2Vec2 groundA(0,0);
-               b2Vec2 groundB(0,0);
-               b2Vec2 posA(0,0);
-               b2Vec2 posB(0,0);
-               if(bdA!=NULL && bdB!=NULL){
-                  posA=bdA->GetPosition();
-                  posB=bdB->GetPosition();
-                  anchorA=bdA->GetLocalCenter();
-                  anchorB=bdB->GetLocalCenter();
-                  groundA.Set(posA.x+groundOffsetA.x,posA.y+groundOffsetA.y);
-                  groundB.Set(posB.x+groundOffsetB.x,posB.y+groundOffsetB.y);
-                  anchorA.x=anchorA.x+OffsetanchorA.x;
-                  anchorA.y=anchorA.y+OffsetanchorA.y;
-                  anchorB.x=anchorB.x+OffsetanchorB.x;
-                  anchorB.y=anchorB.y+OffsetanchorB.y;
-               }
-               switch(request.type){
-                   case b2JointType::e_distanceJoint:{
-                       b2DistanceJointDef joint_defs;
-                       joint_defs.bodyA=request.bodyA;
-                       joint_defs.bodyB=request.bodyB;
-                       joint_defs.userData.pointer=request.userData.pointer;
-                       joint_defs.collideConnected=request.collideConnected;
-                       joint_defs.type=request.type;
-                       joint_defs.localAnchorA=anchorA;
-                       joint_defs.localAnchorB=anchorB;
-
-                       joint_defs.minLength=Converter::pixelToMetter(joint_comp->get_minLimit());
-                       joint_defs.maxLength=Converter::pixelToMetter(joint_comp->get_maxLimit());
-                       if(joint_defs.minLength<=0){
-                          joint_defs.minLength=0.01;
-                       }
-                       float damping=joint_comp->get_damping();
-                       float stiffness=joint_comp->get_stiffness();
-                       joint_defs.damping=damping;
-                       joint_defs.stiffness=stiffness;
-                       b2Vec2 dist_bds=posA-posB;
-                       Vector2 dist_vect=Vector2(dist_bds.x,dist_bds.y);
-                       joint_defs.length=dist_vect.magnitud();
-                       world.CreateJoint(&joint_defs);
-                       break;
-                   }
-                    case b2JointType::e_revoluteJoint:{
-                       b2RevoluteJointDef joint_defs;
-                       joint_defs.bodyA=request.bodyA;
-                       joint_defs.bodyB=request.bodyB;
-                       joint_defs.userData.pointer=request.userData.pointer;
-                       joint_defs.collideConnected=request.collideConnected;
-                       joint_defs.type=request.type;
-                       joint_defs.localAnchorA=anchorA;
-                       joint_defs.localAnchorB=anchorB;
-                       joint_defs.enableMotor=false;
-                       joint_defs.enableLimit=false;
-                       if(joint_comp->apply_limits()){
-                           float min_angle=Math_G::Wrap_Angle(Math_G::to_rad(joint_comp->get_minLimit())*-1);
-                           float max_angle=Math_G::Wrap_Angle(Math_G::to_rad(joint_comp->get_maxLimit())*-1);
-                           float angl=Math_G::Wrap_Angle(Math_G::to_rad(joint_comp->get_Angle()))*-1;
-
-                           joint_defs.enableLimit=true;
-                           joint_defs.lowerAngle=min_angle;
-                           joint_defs.upperAngle=max_angle;
-                           joint_defs.referenceAngle=angl;
-                       }
-                       if(joint_comp->get_speed()>0 && joint_comp->get_maxSpeed()>0){
-                            float max_torque=joint_comp->get_maxSpeed();
-                            float speed=Math_G::Wrap_Angle(Math_G::to_rad(joint_comp->get_speed()));
-                            joint_defs.enableMotor=true;
-                            joint_defs.maxMotorTorque=max_torque;
-                            joint_defs.motorSpeed=speed;
-                       }
-                       world.CreateJoint(&joint_defs);
-                       break;
-                   }
-                   case b2JointType::e_pulleyJoint:{
-                       b2PulleyJointDef joint_defs;
-                       joint_defs.bodyA=request.bodyA;
-                       joint_defs.bodyB=request.bodyB;
-                       joint_defs.userData.pointer=request.userData.pointer;
-                       joint_defs.collideConnected=request.collideConnected;
-                       joint_defs.type=request.type;
-                       joint_defs.localAnchorA=anchorA;
-                       joint_defs.localAnchorB=anchorB;
-                       joint_defs.lengthA=Converter::pixelToMetter(joint_comp->get_maxLimit());
-                       joint_defs.lengthB=Converter::pixelToMetter(joint_comp->get_minLimit());
-                       float ratio_val=joint_comp->get_ratio();
-                       if(ratio_val>0){
-                          joint_defs.ratio=ratio_val;
-                       }
-                       joint_defs.groundAnchorA=groundA;
-                       joint_defs.groundAnchorB=groundB;
-                       world.CreateJoint(&joint_defs);
-                       break;
-                   }
-                   case b2JointType::e_prismaticJoint:{
-                       b2PrismaticJointDef joint_defs;
-                       joint_defs.bodyA=request.bodyA;
-                       joint_defs.bodyB=request.bodyB;
-                       joint_defs.userData.pointer=request.userData.pointer;
-                       joint_defs.collideConnected=request.collideConnected;
-                       joint_defs.type=request.type;
-                       joint_defs.localAnchorA=anchorA;
-                       joint_defs.localAnchorB=anchorB;
-                       Vector2 axis_joint=joint_comp->get_axis();
-                       b2Vec2 axis(axis_joint.x,axis_joint.y);
-                       joint_defs.enableMotor=false;
-                       joint_defs.enableLimit=false;
-                       joint_defs.localAxisA=axis;
-                       if(joint_comp->apply_limits()){
-
-                          float min_translation=Converter::pixelToMetter(joint_comp->get_minLimit());
-                          float max_translation=Converter::pixelToMetter(joint_comp->get_maxLimit());
-                          joint_defs.lowerTranslation=min_translation;
-                          joint_defs.upperTranslation=max_translation;
-                          joint_defs.enableLimit=true;
-                       }
-                       if(joint_comp->get_speed()>0 &&joint_comp->get_maxSpeed()>0){
-                             float max_speed=joint_comp->get_maxSpeed();
-                             float speed=joint_comp->get_speed();
-                             joint_defs.enableMotor=true;
-                             joint_defs.maxMotorForce=max_speed;
-                             joint_defs.motorSpeed=speed;
-                       }
-                       if(joint_comp->get_Angle()){
-                            float angl=joint_comp->get_Angle();
-                            joint_defs.referenceAngle=Math_G::Wrap_Angle(Math_G::to_rad(angl))*-1;
-                       }
-                       world.CreateJoint(&joint_defs);
-                       break;
-                   }
-                   case b2JointType::e_weldJoint:{
-                        b2WeldJointDef joint_defs;
-                        joint_defs.bodyA=request.bodyA;
-                        joint_defs.bodyB=request.bodyB;
-                        joint_defs.userData.pointer=request.userData.pointer;
-                        joint_defs.collideConnected=request.collideConnected;
-                        joint_defs.type=request.type;
-                        float angl=joint_comp->get_Angle();
-                        if(angl>=0){
-                            joint_defs.referenceAngle=Math_G::Wrap_Angle(Math_G::to_rad(angl))*-1;
-                        }
-                        float stiffness=joint_comp->get_stiffness();
-                        float damping=joint_comp->get_damping();
-                        joint_defs.stiffness=stiffness;
-                        joint_defs.damping=damping;
-                        world.CreateJoint(&joint_defs);
-                        break;
-                   }
-
-                   default:{
-                      break;
-                   }
-               }
-           }
-       }
-       joint_requests.clear();
-       for(int i=0;i<remove_joint_requests.size();i++){
-          b2Joint* request=remove_joint_requests.at(i);
-          if(request!=NULL){
-              b2Body* A_bd=request->GetBodyA();
-              b2Body* B_bd=request->GetBodyB();
-              Joint_Component* jnt_dat=reinterpret_cast<Joint_Component*>(request->GetUserData().pointer);
-              string child_name="";
-              string parent_name="";
-              int type_j=0;
-              if(jnt_dat!=NULL){
-                 child_name=jnt_dat->get_child();
-                 parent_name=jnt_dat->get_parent();
-                 type_j=jnt_dat->get_type();
-              }
-              request->GetUserData().pointer=NULL;
-              if(A_bd!=NULL){
-                Game_Object* A_obj=reinterpret_cast<Game_Object*>(A_bd->GetUserData().pointer);
-                if(A_obj!=NULL){
-                     A_obj->remove_Joint(child_name,parent_name,type_j);
-                }
-              }
-              if(B_bd!=NULL){
-                Game_Object* B_obj=reinterpret_cast<Game_Object*>(B_bd->GetUserData().pointer);
-                if(B_obj!=NULL){
-                     B_obj->remove_Joint(child_name,parent_name,type_j);
-                }
-              }
-              world.DestroyJoint(request);
-              request=NULL;
-          }
-       }
-       remove_joint_requests.clear();
-    }
-}
-//request remove a joint
-void Physic_Engine::remove_joint(Joint_Component* joint_target){
-   if(joint_target==NULL){
-      return;
-   }
-   int joint_t=joint_target->get_type();
-   string parent_name=joint_target->get_parent();
-   string child_name=joint_target->get_child();
-   b2JointType typ;
-
-   switch(joint_t){
-     case JOINT_TYPES::DISTANCE_JOINT:{
-         typ=b2JointType::e_distanceJoint;
-         break;
-     }
-     case JOINT_TYPES::REVOLUTE_JOINT:{
-        typ=b2JointType::e_revoluteJoint;
-        break;
-     }
-     case JOINT_TYPES::PRISMATIC_JOINT:{
-        typ=b2JointType::e_prismaticJoint;
-        break;
-     }
-     case JOINT_TYPES::PULLEY_JOINT:{
-          typ=b2JointType::e_pulleyJoint;
-          break;
-     }
-
-     case JOINT_TYPES::WELD_JOINT:{
-        typ=b2JointType::e_weldJoint;
-        break;
-           }
-     default:{
-        break;
-     }
-   }
-
-   b2Joint* jnt=NULL;
-   b2Body* body_list=world.GetBodyList();
-   while(body_list!=NULL){
-
-      Game_Object* g=reinterpret_cast<Game_Object*>(body_list->GetUserData().pointer);
-      if(g!=NULL && jnt==NULL){
-           if(g->get_name()==parent_name){
-              b2JointEdge* parent_joints=body_list->GetJointList();
-              while(parent_joints!=NULL ){
-                  b2Joint* temp_joint=parent_joints->joint;
-                  if(temp_joint!=NULL){
-                       b2Body* child_bd=temp_joint->GetBodyB();
-                       bool correct_child=false;
-                       if(child_bd!=NULL){
-                           Game_Object* g_child=reinterpret_cast<Game_Object*>(child_bd->GetUserData().pointer);
-                           if(g_child!=NULL){
-                              if(g_child->get_name()==child_name){
-                                  correct_child=true;
-                              }
-                           }
-                       }
-                       if(temp_joint->GetType()==typ && correct_child){
-                           jnt=temp_joint;
-                       }
-                  }
-                  parent_joints=parent_joints->next;
-              }
-           }
-      }
-      body_list=body_list->GetNext();
-   }
-   if(jnt!=NULL){
-      remove_joint_requests.push_back(jnt);
-   }
-}
-
-//Update Joint data from Component Associated
-void Physic_Engine::update_joinData(Joint_Component* jnt_comp,b2Joint* jnt){
-  if(jnt_comp==NULL || jnt==NULL){
-      return;
-  }
-  if(jnt_comp->apply_limits()==false || jnt_comp->require_update()==false){
-      return;
-  }
-
-  switch(jnt_comp->get_type()){
-      case JOINT_TYPES::DISTANCE_JOINT:{
-         float min_dist=Converter::pixelToMetter(jnt_comp->get_minLimit());
-         float max_dist=Converter::pixelToMetter(jnt_comp->get_maxLimit());
-         b2DistanceJoint* dist_jnt=(b2DistanceJoint*)jnt;
-         if(dist_jnt!=NULL){
-              dist_jnt->SetMaxLength(max_dist);
-              dist_jnt->SetMinLength(min_dist);
-              dist_jnt->SetDamping(jnt_comp->get_damping());
-              dist_jnt->SetStiffness(jnt_comp->get_stiffness());
-         }
-         break;
-      }
-      case JOINT_TYPES::PRISMATIC_JOINT:{
-           float min_desplz=Converter::pixelToMetter(jnt_comp->get_minLimit());
-           float max_desplz=Converter::pixelToMetter(jnt_comp->get_maxLimit());
-           b2PrismaticJoint* primatic_jnt=(b2PrismaticJoint*)jnt;
-           if(primatic_jnt!=NULL){
-               primatic_jnt->SetLimits(min_desplz,max_desplz);
-               primatic_jnt->SetMaxMotorForce(jnt_comp->get_speed());
-               primatic_jnt->SetMotorSpeed(jnt_comp->get_maxSpeed());
-           }
-           break;
-      }
-
-      case JOINT_TYPES::REVOLUTE_JOINT:{
-         b2RevoluteJoint* revolute_jnt=(b2RevoluteJoint*)jnt;
-         float min_angle=Math_G::Wrap_Angle(Math_G::to_rad(jnt_comp->get_minLimit()))*-1;
-         float max_angle=Math_G::Wrap_Angle(Math_G::to_rad(jnt_comp->get_maxLimit()))*-1;
-
-         if(revolute_jnt!=NULL){
-             revolute_jnt->SetLimits(min_angle,max_angle);
-             revolute_jnt->SetMotorSpeed(Math_G::Wrap_Angle(Math_G::to_rad(jnt_comp->get_speed()))*-1);
-             revolute_jnt->SetMaxMotorTorque(jnt_comp->get_maxSpeed());
-         }
-         break;
-      }
-      default:{
-
-        break;
-      }
-  }
-  jnt_comp->clear_requests();
-}
-
-
-//Return True if the world is Locked
-bool Physic_Engine::is_locked(){
-   return world.IsLocked();
-}
-
-//Change the gravity direction
-void Physic_Engine::change_gravDir(Vector2 dir){
-   dir=dir.normalize();
-   Vector2 next_grav=Vector2(dir.x*gravedad,dir.y*gravedad);
-   gravity_val.Set(next_grav.x,next_grav.y);
-   world.SetGravity(gravity_val);
-}
-*/

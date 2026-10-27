@@ -48,6 +48,8 @@ void Scene::free_memory(){
    collider_sys.free_system();
    rigidbd_sys.free_system();
    anim_sys.Free_System();
+   join_sys.free_system();
+   spriteComposerSys.Free_Memory();
    components_masks.clear();
    list_scenes.clear();
 }
@@ -81,6 +83,10 @@ void Scene::reserve_memory(int16_t num_elements,map<uint8_t,uint16_t> components
               join_sys.reserve_memory(components_count[i],num_elements,0xFFFF);
               break;
            }
+           case components_types::SPRITECOMPOSER_COMP:{
+              spriteComposerSys.Reserve(components_count[i],num_elements,0xFFFF);
+              break;
+           }
            case components_types::PLAYER_COMP:{
               player_sys.reserve_memory(components_count[i],num_elements,0xFFFF);
               break;
@@ -103,7 +109,7 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
    uint8_t draw_request=REDRAW_NONE;
    //update entities scripts
    for(uint16_t i=0;i<last_entity;i++){
-      uint16_t mask=components_masks[i];
+      std::bitset<64> mask=components_masks[i];
       if(HasComponentBit(mask,PLAYER_COMP)){
            player_sys.update_player(mask,i,this,dt,input_sys);
       }
@@ -123,6 +129,7 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
       }
 
    }
+   main_camera.follow_target(this);
    if(main_camera.hasMoved_significantly()){
        main_camera.update_renderPos();
        draw_request=REDRAW_ALL;
@@ -136,7 +143,7 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
 }
 
 //Register the Entity in each Component System Requerid
-void Scene::register_entity(int16_t entity_Id,ComponentMask mask,const Entity_Props& props){
+void Scene::register_entity(int16_t entity_Id,std::bitset<64> mask,const Entity_Props& props){
      components_masks.push_back(mask);
      for (uint8_t i=0;i<COMP_COUNT;i++){
            components_types type_target=static_cast<components_types>(i);
@@ -169,8 +176,10 @@ void Scene::process_target_component(components_types comp_type,const Entity_Pro
 void Scene::process_basic_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity){
    switch(comp_type){
        case components_types::TRANSFORM_COMP:{
-          float px=props.get_float("position_x",0.0);
-          float py=props.get_float("position_y",0.0);
+          float w_entity=props.get_float("width",0);
+          float h_entity=props.get_float("height",0);
+          float px=props.get_float("position_x",0.0)+(w_entity*0.5);
+          float py=props.get_float("position_y",0.0)-(h_entity*0.5);
           uint16_t scale=props.get_uint("scale",1);
           bool flip=props.get_bool("flip",false);
           float rot=props.get_float("rotation",0.0);
@@ -181,7 +190,7 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
           int16_t z_index=props.get_int("z_index",0);
           uint8_t draw_mode=props.get_uint("draw_mode",0);
           bool visible=props.get_bool("visible",true);
-          uint16_t gid=props.get_uint("gid",0);
+          uint16_t gid=props.get_uint("gid",0xFFFF)-1;
           render_sys.register_Entity(visible,draw_mode,gid,z_index,id_entity);
           break;
        }
@@ -192,12 +201,11 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
           for(uint8_t i=0;i<count_addiontalFixtures;i++){
              fixture_Data new_fixture;
              std::string index_str=to_string(static_cast<uint16_t>(i));
-             std::string mask_fixture_str=props.get_string("Fixture_Mask_"+index_str,"");
              std::vector<std::string> bit_fixture_list=Converter::str_toVect(props.get_string("Fixture_Category_Bits_"+index_str,""));
-             new_fixture.mask_fixture= get_LayerCollider_mask(mask_fixture_str.c_str());
+             new_fixture.mask_fixture= props.get_uint("Fixture_Mask_"+index_str,0);
              uint16_t category_bits_fixture=0;
              for(std::string value:bit_fixture_list){
-                  category_bits_fixture|=get_LayerCollider_mask(value.c_str());
+                  category_bits_fixture|=Converter::strTo_UInt(value,0);
              }
              new_fixture.category_bits_fixture=category_bits_fixture;
              new_fixture.radius=props.get_float("Fixture_Radius_"+index_str,0);
@@ -214,13 +222,13 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
           float padding=props.get_float("padding_collider",0.0);
           int8_t mat_id=props.get_int("physic_material",0);
           bool is_trigger=props.get_bool("is_trigger",false);
-          uint16_t mask_collision=get_LayerCollider_mask(props.get_string("collider_mask","").c_str());
+          uint16_t mask_collision=props.get_uint("collider_mask",0);
           uint16_t bits=0;
           std::vector<std::string> bit_list=Converter::str_toVect(props.get_string("collider_categoryBits",""));
           for(std::string val:bit_list){
-             bits|=get_LayerCollider_mask(val.c_str());
+             bits|=Converter::strTo_UInt(val,0);
           }
-          std::string fig_type=props.get_string("figure_type","");
+          uint8_t fig_type=props.get_uint("figure_type",FIGURE_NONE);
           std::vector<Vertex_Polygon> vertexs;
           uint8_t vertex_count=props.get_uint("Vertex_Collider_Count",0);
           vertexs.reserve(vertex_count);
@@ -231,7 +239,6 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
             vertex.point_y=props.get_float("Vertex_Collider_PointY_"+index_str,0.0);
             vertexs.push_back(vertex);
           }
-
           collider_sys.register_collider(id_entity,mat_id,is_trigger,mask_collision,bits,fig_type,radius,w,h,offsetx,offsety,padding,vertexs,additional_fixtures);
           break;
        }
@@ -240,16 +247,40 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
           float grav_scale=props.get_float("gravity_scale",1.0);
           float damp=props.get_float("damping_body",0.0);
           float angular_damping=props.get_float("angular_damping",0.0);
-          bool is_kinematic=props.get_bool("is_kinematic",false);
+          uint8_t bd_type=props.get_uint("body_type",BODY_DINAMIC);
           bool bd_active=props.get_bool("active_body",true);
           bool can_sleep=props.get_bool("bd_can_sleep",true);
           bool lock_rot=props.get_bool("lock_rotation",false);
-          rigidbd_sys.register_body(id_entity,mass,grav_scale,damp,angular_damping,bd_active,is_kinematic,can_sleep,lock_rot);
+          rigidbd_sys.register_body(id_entity,mass,grav_scale,damp,angular_damping,bd_active,bd_type,can_sleep,lock_rot);
           break;
        }
        case components_types::ANIMATOR_COMP:{
           std::string source_anim=props.get_string("source_animation","");
           anim_sys.register_Entity(id_entity,source_anim,&sys_textures);
+          break;
+       }
+       case components_types::SPRITECOMPOSER_COMP:{
+          uint16_t number_sprites=props.get_uint("SpriteComposer_Sprites_Count",0);
+          std::vector<SpriteComposer_Item> list_sprites;
+          list_sprites.reserve(number_sprites);
+          for(uint16_t i=0;i<number_sprites;i++){
+             std::string index_str=to_string(i);
+             uint16_t sprite_id=props.get_uint("SpriteComposer_Id_Sprite_"+index_str,0xFFFF);
+             if(sprite_id>0){
+                sprite_id=sprite_id-1;
+             }
+             float offsetX=props.get_float("SpriteComposer_OffsetX_Sprite_"+index_str,0);
+             float offsetY=props.get_float("SpriteComposer_OffsetY_Sprite_"+index_str,0);
+             uint8_t draw_mod=props.get_uint("SpriteComposer_DrawMode_Sprite_"+index_str,RENDER_MODES::NORMAL_MODE);
+             SpriteComposer_Item next_sprite;
+             next_sprite.offsetX=offsetX;
+             next_sprite.offsetY=offsetY;
+             next_sprite.id_sprite=sprite_id;
+             next_sprite.draw_mode=draw_mod;
+             list_sprites.push_back(next_sprite);
+
+          }
+          spriteComposerSys.Regiser_Entity(id_entity,list_sprites);
           break;
        }
        case components_types::JOINT_COMP:{
@@ -267,24 +298,30 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
                     float anchorA_y=props.get_float("AnchorA_Y_Joint_"+index_str,0.0);
                     float anchorB_x=props.get_float("AnchorB_X_Joint_"+index_str,0.0);
                     float anchorB_y=props.get_float("AnchorB_Y_Joint_"+index_str,0.0);
-                    join_sys.register_distance_joint(id_entity,min_dist,max_dist,stiff,damp,anchorA_x,anchorA_y,anchorB_x,anchorB_y);
+                    bool collider_connect=props.get_bool("Collide_Connect_Join_"+index_str,true);
+                    bool removeOn_Build=props.get_bool("RemoveOn_Build_Joint_"+index_str,true);
+                    uint16_t target=props.get_uint("Joint_Target_"+index_str,0xFFFF);
+                    //Convert AnchorA from Anchor Direction Vector Normalized to HalfSize Direction Vector
+                    join_sys.register_distance_joint(id_entity,target,removeOn_Build,collider_connect,min_dist,max_dist,stiff,damp,anchorA_x,anchorA_y,anchorB_x,anchorB_y);
                     break;
                  }
                  case REVOLUTE_JOINT:{
-                    float anchor_x=props.get_float("AnchorX_Joint_"+index_str,0.0);
-                    float anchor_y=props.get_float("AnchorY_Joint_"+index_str,0.0);
+                    bool collider_connect=props.get_bool("Collide_Connect_Join_"+index_str,true);
+                    float ref_angle=props.get_float("Angle_Reference_Joint_"+index_str,0.0f);
                     float motor_speed=props.get_float("Motor_Speed_Joint_"+index_str,0.0);
                     float max_torque=props.get_float("Max_Torque_Joint_"+index_str,0.0);
                     float lower_angle=props.get_float("Lower_Angle_Joint_"+index_str,0.0);
                     float upper_angle=props.get_float("Upper_Angle_Joint_"+index_str,0.0);
                     bool enable_limits=props.get_bool("Enable_Limits_Joint_"+index_str,true);
                     bool enable_motor=props.get_bool("Enable_Motor_Joint_"+index_str,true);
-                    join_sys.register_revolute_joint(id_entity,anchor_x,anchor_y,lower_angle,upper_angle,motor_speed,max_torque,enable_motor,enable_limits);
+                    uint16_t target=props.get_uint("Joint_Target_"+index_str,0xFFFF);
+                    bool removeOn_Build=props.get_bool("RemoveOn_Build_Joint_"+index_str,true);
+                    join_sys.register_revolute_joint(id_entity,target,removeOn_Build,collider_connect,ref_angle,lower_angle,upper_angle,motor_speed,max_torque,enable_motor,enable_limits);
                     break;
                  }
                  case PRISMATIC_JOINT:{
-                    float anchor_x=props.get_float("AnchorX_Joint_"+index_str,0.0);
-                    float anchor_y=props.get_float("AnchorY_Joint_"+index_str,0.0);
+                    float angle_ref=props.get_float("Angle_Reference_Joint_"+index_str,0.0);
+                    bool collider_connect=props.get_bool("Collide_Connect_Join_"+index_str,true);
                     float motor_speed=props.get_float("Motor_Speed_Joint_"+index_str,0.0);
                     float max_force=props.get_float("Max_Force_Joint_"+index_str,0.0);
                     float lower_translation=props.get_float("Lower_Translation_Joint_"+index_str,0.0);
@@ -293,15 +330,32 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
                     float axis_y=props.get_float("AxisY_Joint_"+index_str,0.0);
                     bool enable_limits=props.get_bool("Enable_Limits_Joint_"+index_str,true);
                     bool enable_motor=props.get_bool("Enable_Motor_Joint_"+index_str,true);
-                    join_sys.register_prismatic_joint(id_entity,anchor_x,anchor_y,axis_x,axis_y,lower_translation,upper_translation,motor_speed,max_force,enable_motor,enable_limits);
+                    uint16_t target=props.get_uint("Joint_Target_"+index_str,0xFFFF);
+                    bool removeOn_Build=props.get_bool("RemoveOn_Build_Joint_"+index_str,true);
+
+                    join_sys.register_prismatic_joint(id_entity,target,removeOn_Build,collider_connect,axis_x,axis_y,angle_ref,lower_translation,upper_translation,motor_speed,max_force,enable_motor,enable_limits);
                     break;
                  }
                  case WELD_JOINT:{
-                    join_sys.register_weld_joint(id_entity);
+                    bool collider_connect=props.get_bool("Collide_Connect_Join_"+index_str,true);
+                    float stiffnes=props.get_float("Stiffnes_Joint_"+index_str,0.0);
+                    float damping=props.get_float("Damping_Joint_"+index_str,0.0);
+                    float angle_ref=props.get_float("Angle_Reference_Joint_"+index_str,0.0);
+                    bool removeOn_Build=props.get_bool("RemoveOn_Build_Joint_"+index_str,true);
+                    uint16_t target=props.get_uint("Joint_Target_"+index_str,0xFFFF);
+                    join_sys.register_weld_joint(id_entity,target,removeOn_Build,collider_connect,stiffnes,damping,angle_ref);
                     break;
                  }
                  case PULLEY_JOINT:{
-                    join_sys.register_pulley_joint(id_entity);
+                    bool collider_connect=props.get_bool("Collide_Connect_Join_"+index_str,true);
+                    uint16_t target=props.get_uint("Joint_Target_"+index_str,0xFFFF);
+                    float groundA_offsetY=props.get_float("GroundA_OffsetY_Joint_"+index_str,0.0);
+                    float groundB_offsetY=props.get_float("GroundB_OffsetY_Joint_"+index_str,0.0);
+                    float groundA_offsetX=props.get_float("GroundA_OffsetX_Joint_"+index_str,0.0);
+                    float groundB_offsetX=props.get_float("GroundB_OffsetX_Joint_"+index_str,0.0);
+                    bool removeOn_Build=props.get_bool("RemoveOn_Build_Joint_"+index_str,true);
+                    float ratio_joint=props.get_float("Ratio_Joint_"+index_str,1.0);
+                    join_sys.register_pulley_joint(id_entity,target,removeOn_Build,collider_connect,ratio_joint,groundA_offsetX,groundA_offsetY,groundB_offsetX,groundB_offsetY);
                     break;
                  }
                  default:break;
@@ -369,8 +423,8 @@ bool Scene::require_loadScene(){
 
 //call Collision Event On Script Components
 void Scene::Execute_Collision_Ev(uint16_t entityA,uint16_t entityB,float normal_x,float normal_y,bool begin_ev){
-    uint16_t mask_A=components_masks[entityA];
-    uint16_t mask_B=components_masks[entityB];
+    std::bitset<64> mask_A=components_masks[entityA];
+    std::bitset<64> mask_B=components_masks[entityB];
     vector<components_types> list_targets={PLAYER_COMP};
     for(components_types target:list_targets){
         if(HasComponentBit(mask_A,target)==false){
@@ -388,8 +442,8 @@ void Scene::Execute_Collision_Ev(uint16_t entityA,uint16_t entityB,float normal_
 
 //call Trigger Event On Script Components
 void Scene::Execute_Trigger_Ev(uint16_t entityA,uint16_t entityB,bool beginEv){
-    uint16_t mask_A=components_masks[entityA];
-    uint16_t mask_B=components_masks[entityB];
+    std::bitset<64> mask_A=components_masks[entityA];
+    std::bitset<64> mask_B=components_masks[entityB];
     vector<components_types> list_targets={PLAYER_COMP};
     for(components_types target:list_targets){
         if(HasComponentBit(mask_A,target)==false){
@@ -406,6 +460,21 @@ void Scene::Execute_Trigger_Ev(uint16_t entityA,uint16_t entityB,bool beginEv){
     }
 
 
+}
+
+//Remove a Unused Joint Component
+void Scene::remove_Jointcomponent(uint16_t id,uint8_t joint_type,bool require_destroy){
+
+   if(id>=last_entity){
+      return;
+   }
+   int8_t count_joints=0;
+   if(HasComponentBit(components_masks[id],JOINT_COMP)){
+       join_sys.unregister_joint(id,joint_type,count_joints,require_destroy);
+       if(count_joints<=0){
+           RemoveComponentBit(components_masks[id],JOINT_COMP);
+       }
+   }
 }
 
 //Set the Camera
@@ -463,7 +532,7 @@ template<typename T> T* Scene::get_component_byName(const char* name_comp,uint16
 }
 
 //get the mask of a Entity
-uint32_t Scene::get_mask(uint16_t id){
+std::bitset<64> Scene::get_mask(uint16_t id){
     if(id<0 || id>=last_entity){
          return 0;
     }
@@ -493,6 +562,16 @@ RigidBody_System* Scene::get_rigidbody_sys(){
 //Get Animator System
 Animator_System* Scene::get_animator_sys(){
    return &anim_sys;
+}
+
+//Get the Joint System
+Joint_System* Scene::get_joint_sys(){
+   return &join_sys;
+}
+
+//Get the Sprite Composer System
+SpriteComposer_System* Scene::get_SpriteComposer_sys(){
+  return &spriteComposerSys;
 }
 
 //Get Player System

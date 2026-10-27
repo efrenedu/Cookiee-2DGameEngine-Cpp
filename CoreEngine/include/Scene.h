@@ -28,7 +28,7 @@ struct Scene{
        void load_sceneSource(SDL_Renderer* render_win,uint8_t load_mode=LOAD_REPLACE);
        void load_scene(int8_t index);
        bool require_loadScene();
-       void register_entity(int16_t entity_Id,ComponentMask mask,const Entity_Props& props);
+       void register_entity(int16_t entity_Id,std::bitset<64> mask,const Entity_Props& props);
        void transform_change(uint16_t id);
        void Execute_Collision_Ev(uint16_t entityA,uint16_t entityB,float normal_x,float normal_y,bool begin_ev);
        void Execute_Trigger_Ev(uint16_t entityA,uint16_t entityB,bool beginEv);
@@ -47,7 +47,10 @@ struct Scene{
        Joint_System* get_joint_sys();
        Player_System* get_player_sys();
        Animator_System* get_animator_sys();
-       uint32_t get_mask(uint16_t id);
+       SpriteComposer_System* get_SpriteComposer_sys();
+       std::bitset<64> get_mask(uint16_t id);
+       void remove_Jointcomponent(uint16_t id,uint8_t joint_type,bool require_destroy=false);
+
     private:
         void process_target_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity);
         void process_basic_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity);
@@ -58,6 +61,7 @@ struct Scene{
         Collider_System collider_sys;
         RigidBody_System rigidbd_sys;
         Animator_System anim_sys;
+        SpriteComposer_System spriteComposerSys;
         Joint_System join_sys;
         Player_System player_sys;
         System_TileMap sys_tilemap;
@@ -65,7 +69,7 @@ struct Scene{
         textureManager_system sys_textures;
         Audio_System audio_sys;
         Physic_Material_System physic_material_sys;
-        std::vector<uint32_t> components_masks;
+        std::vector<std::bitset<64>> components_masks;
         std::vector<std::string> list_scenes;
         int16_t last_entity;
         bool entities_changes_transform;

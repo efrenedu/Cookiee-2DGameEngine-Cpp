@@ -58,20 +58,29 @@ struct Physic_Engine_System{
       RayCastHit RayCast(float x ,float y ,float dir_x,float dir_y,float magnitude);
       void add_CollisionEvent(uint16_t entityA,uint16_t entityB,float x_norm,float y_norm,bool begin_ev);
       void add_TriggerEvent(uint16_t entityA,uint16_t entityB,bool begin_ev);
-
+      void request_destroy_joint(b2Joint* jnt);
+      void change_gravityDir(float x_grav,float y_grav,float gravity_val=9.8);
   private:
-    void add_jointsToworld();
+    void add_jointToworld(Distance_Join_Data* joint_data,b2Body* bdA,b2Body* bdB);
+    void add_jointToworld(Revolute_Join_Data* joint_data,b2Body* bdA,b2Body* bdB);
+    void add_jointToworld(Prismatic_Join_Data* joint_data,b2Body* bdA,b2Body* bdB);
+    void add_jointToworld(Weld_Join_Data* joint_data,b2Body* bdA,b2Body* bdB);
+    void add_jointToworld(Pulley_Join_Data* joint_data,b2Body* bdA,b2Body* bdB);
+    void verify_destroy_joints();
     void build_fixture(b2Body* bd,Physic_Material_System* physyic_material_sys,Collider_Data* col,float mass_body,float angl,uint16_t index_entity);
-    void update_joinData(b2Joint* jnt);
+    void update_joinData(uint16_t index,Joint_System* joint_sys);
     b2World* world=nullptr;
     contactListener* listener=nullptr;
     std::vector<contactCollisionData> collisions_queue;
     std::vector<contactTriggerData> triggers_queue;
+    std::vector<b2Joint*> destroy_joint_queue;
+
     float time_steps;
     float accumul_steps;
     uint8_t velIterations;
     uint8_t posIterations;
-
+    float limit_forceBodies=20.0f;
+    float limit_forceSquare=limit_forceBodies*limit_forceBodies;
 
 };
 
