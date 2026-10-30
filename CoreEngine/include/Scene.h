@@ -7,6 +7,7 @@
 #include<map>
 #include<vector>
 #include <Screen.h>
+#include<Quatree.h>
 
 class Render_DrawSystem;
 
@@ -45,12 +46,13 @@ struct Scene{
        Collider_System* get_collider_sys();
        RigidBody_System* get_rigidbody_sys();
        Joint_System* get_joint_sys();
+       UI_System* get_UI_sys();
        Player_System* get_player_sys();
        Animator_System* get_animator_sys();
        SpriteComposer_System* get_SpriteComposer_sys();
        std::bitset<64> get_mask(uint16_t id);
        void remove_Jointcomponent(uint16_t id,uint8_t joint_type,bool require_destroy=false);
-
+       Entity_TreeData* get_entity_treeData(uint16_t id);
     private:
         void process_target_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity);
         void process_basic_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity);
@@ -63,15 +65,19 @@ struct Scene{
         Animator_System anim_sys;
         SpriteComposer_System spriteComposerSys;
         Joint_System join_sys;
+        UI_System UI_sys;
         Player_System player_sys;
         System_TileMap sys_tilemap;
         Camera2D main_camera;
         textureManager_system sys_textures;
         Audio_System audio_sys;
         Physic_Material_System physic_material_sys;
+        Quatree_System quatree_sys;
         std::vector<std::bitset<64>> components_masks;
         std::vector<std::string> list_scenes;
+        std::vector<Entity_TreeData> entities_quatree_dat;
         int16_t last_entity;
+        float threshold_updateQuatree_Entity;
         bool entities_changes_transform;
         int8_t next_scene;
 

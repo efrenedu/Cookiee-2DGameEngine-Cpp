@@ -325,6 +325,10 @@ void Physic_Engine_System::update(Scene* target_scene){
    Joint_System* joint_sys=target_scene->get_joint_sys();
 
    while(bd!=NULL){
+      if(bd->IsEnabled()==false){
+         bd=bd->GetNext();
+         continue;
+      }
       uint16_t id=static_cast<uint16_t>(bd->GetUserData().pointer);
       Transform_Data* transform_entity=transform_sys->get_transform(id);
       std::bitset<64> mask=target_scene->get_mask(id);
@@ -363,6 +367,7 @@ void Physic_Engine_System::update(Scene* target_scene){
       }
 
       //Update RigidBody and Transform
+      bool has_changed=false;
       if(HasComponentBit(mask,RIGIDBODY_COMP)==true){
           b2Vec2 vel_bd=bd->GetLinearVelocity();
           if(vel_bd.LengthSquared()>limit_forceSquare){
@@ -395,14 +400,24 @@ void Physic_Engine_System::update(Scene* target_scene){
            }
 
            b2Vec2 new_pos=bd->GetPosition();
+           float old_x=transform_entity->x;
+           float old_y=transform_entity->y;
+           float old_angle=transform_entity->angle;
            transform_entity->x=Converter::MetterToPixel(new_pos.x);
            transform_entity->y=Converter::MetterToPixel(new_pos.y);
            transform_entity->angle=renderAngle;
+           rb->last_MoveX=old_x;
+           rb->last_MoveY=old_y;
+
+           if(bd->IsAwake()){
+             if(Math_G::Abs(old_x-transform_entity->x)>=1.0 || Math_G::Abs(old_y-transform_entity->y)>=1.0 || old_angle!=transform_entity->angle ){
+                  has_changed=true;
+              }
+           }
 
       }
 
-      bool change_pos=bd->IsAwake();
-      if(change_pos){
+      if(bd->IsAwake()==true && has_changed==true){
          target_scene->transform_change(id);
       }
       bd=bd->GetNext();
@@ -452,6 +467,10 @@ void Physic_Engine_System::update_world(float dt,Scene* target_scene){
    b2Body* bd=world->GetBodyList();
    RigidBody_System* rigid_body_sys=target_scene->get_rigidbody_sys();
    while(bd!=NULL){
+      if(bd->IsEnabled()==false){
+         bd=bd->GetNext();
+         continue;
+      }
       uint16_t id=static_cast<uint16_t>(bd->GetUserData().pointer);
       std::bitset<64> mask_target=target_scene->get_mask(id);
 

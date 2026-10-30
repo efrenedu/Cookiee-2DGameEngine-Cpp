@@ -20,9 +20,11 @@ struct RenderCommand{
   SDL_Texture* tex_id;
   SDL_Rect rect_world;
   SDL_Rect rect_sprite;
+  SDL_Color color;
   SDL_Point pivot;
   uint16_t angle;
   uint8_t z_index;
+  bool use_color;
   bool flipped;
   bool render_ColliderborderOnly;
 };
@@ -38,7 +40,8 @@ struct Render_DrawSystem
       void draw_scene(Scene* target_scene);
       void draw_entities(textureManager_system* texture_sys,uint16_t num_entities,Scene* target_scene,Camera2D* cam,bool draw_colliders_borders=false);
       void draw_tilemap(textureManager_system* texture_sys,System_TileMap* tilemap,Camera2D* cam);
-      void draw_UI(textureManager_system* texture_sys,Scene* target_scene,uint16_t ui_id);
+      void draw_Particles(textureManager_system* testure_sys,Camera2D* cam);
+      void draw_UI(textureManager_system* texture_sys,Scene* target_scene);
       SDL_Renderer* get_win_render();
       SDL_Window* get_win();
       void On_WindowResize(uint16_t new_w,uint16_t new_h);

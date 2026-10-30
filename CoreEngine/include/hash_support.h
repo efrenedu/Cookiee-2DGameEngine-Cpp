@@ -34,6 +34,7 @@ inline constexpr uint8_t ComponentName_to_ComponentIndex(const char* name ){
       case "animator"_hash:return components_types::ANIMATOR_COMP;
       case "player"_hash:return components_types::PLAYER_COMP;
       case "spriteComposer"_hash:return components_types::SPRITECOMPOSER_COMP;
+      case "UI"_hash:return components_types::UI_COMP;
       default: return components_types::UKNOW_COMP;
    }
 
@@ -41,8 +42,8 @@ inline constexpr uint8_t ComponentName_to_ComponentIndex(const char* name ){
 //Get the List of Availables components Names
 inline constexpr auto GetComponentKeysNames(){
     std::array<const char*,COMP_COUNT> keys={
-      "transform","render","camera","collider","rigidbody","joint","animator","spriteComposer","button","label","panel","checkbtn",
-      "radiobtn","valuebar","scrollbar","slider","canvas","player","enemy",
+      "transform","render","camera","collider","rigidbody","joint","animator","spriteComposer","UI",
+      "player","enemy",
     };
     return keys;
 }

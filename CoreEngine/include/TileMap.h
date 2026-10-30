@@ -12,6 +12,7 @@ struct TileLayer{
         void set_tile(uint32_t index_tile,uint16_t sprite_id);
         void reserve_memory(uint32_t w,uint32_t h);
         uint32_t get_width();
+        uint32_t get_height();
         uint16_t get_sprite_index(uint32_t tile_index);
         uint16_t get_sprite_index(uint32_t column,uint32_t row);
     private:
@@ -31,6 +32,7 @@ struct System_TileMap
         void set_tile(uint8_t layer_index,uint32_t index_tile,uint16_t sprite_id);
         uint8_t get_tiles_size();
         uint32_t get_width_layer(uint8_t layer_index);
+        uint32_t get_height_layer(uint8_t layer_index);
         uint16_t get_sprite_tile(uint8_t layer_index,uint32_t index_tile);
         uint16_t get_sprite_tile(uint8_t layer_index,uint32_t column,uint32_t row);
         uint8_t get_layers_count();

@@ -60,7 +60,7 @@ bool Render_DrawSystem::Init_Main_Windows(std::unordered_map<std::string,std::st
       std::cout<<"Error Init Main Windows"<<std::endl;
       return false;
    }
-   uint32_t flags_render=SDL_RENDERER_ACCELERATED;
+   uint32_t flags_render=SDL_RENDERER_ACCELERATED ;
    main_render=SDL_CreateRenderer(main_win,-1,flags_render);
    if(main_render==NULL){
      std::cout<<"Error Init Render of Main Windows"<<std::endl;
@@ -112,6 +112,8 @@ void  Render_DrawSystem::draw_scene(Scene* target_scene){
     textureManager_system* texture_sys=target_scene->get_texture_system();
     draw_tilemap(texture_sys,tilemap,main_cam);
     draw_entities(texture_sys,target_scene->get_count_entities(),target_scene,main_cam);
+    draw_Particles(texture_sys,main_cam);
+    draw_UI(texture_sys,target_scene);
     SDL_RenderPresent(main_render);
     redraw=REDRAW_NONE;
     render_queue.clear();
@@ -126,11 +128,15 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
     float bottom_cam=cam->getBottom();
     Transform_System* transf_sys=target_scene->get_transform_sys();
     Render_System* render_sys=target_scene->get_render_sys();
-
-    for(uint16_t i=0;i<num_enities;i++){
-          Transform_Data* data_transform=transf_sys->get_transform(i);
+    RigidBody_System* body_sys=target_scene->get_rigidbody_sys();
+    float alpha=0.4;
+    std:vector<uint16_t> cam_near=cam->get_NearEntities();
+    for(uint16_t index:cam_near){
+          Transform_Data* data_transform=transf_sys->get_transform(index);
           float x=data_transform->x;
           float y=data_transform->y*-1;
+          float dif_x=0;
+          float dif_y=0;
           float angle=data_transform->angle;
           bool flipped=data_transform->flipped;
           uint16_t scale=data_transform->scale;
@@ -139,14 +145,19 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
           float screen_x=x-left_cam;
           float screen_y=y-bottom_cam;
           SDL_Rect rect_obj;
+          SDL_Color color;
 
-          std::bitset<64> mask_entity=target_scene->get_mask(i);
+          std::bitset<64> mask_entity=target_scene->get_mask(index);
           bool is_collider=false;
           bool is_rendered=false;
           bool is_composer=false;
+          if(HasComponentBit(mask_entity,UI_COMP)){
+              continue;
+          }
           if(HasComponentBit(mask_entity,COLLIDER_COMP)){
              is_collider=true;
           }
+
           if(HasComponentBit(mask_entity,RENDER_COMP)){
              is_rendered=true;
           }
@@ -161,7 +172,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
              collider_rect.x=screen_x;
              collider_rect.y=screen_y;
              Collider_System* collider_sys=target_scene->get_collider_sys();
-             Collider_Data* collider=collider_sys->get_collider(i);
+             Collider_Data* collider=collider_sys->get_collider(index);
              SDL_SetRenderDrawColor(main_render,255,0,0,255);
              if(collider->collider_type==FIGURE_TYPE::FIGURE_CIRCLE){
                 collider_rect.w=collider->shape.circle.radius*2;
@@ -172,10 +183,13 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
                      NULL,
                      collider_rect,
                      rect_obj,
+                     color,
                      pt,
                      0,
                      100,
-                     false,true
+                     false,
+                     false,
+                     true
                  });
                  std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
                         return a.z_index<b.z_index;
@@ -190,10 +204,13 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
                      NULL,
                      collider_rect,
                      rect_obj,
+                     color,
                      pt,
                      0,
                      100,
-                     false,true
+                     false,
+                     false,
+                     true
                  });
                  std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
                         return a.z_index<b.z_index;
@@ -204,7 +221,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
           if(is_rendered==false){
             continue;
           }
-          Render_data* render_dat=render_sys->get_render(i);
+          Render_data* render_dat=render_sys->get_render(index);
           if(render_dat->visible==false){
              continue;
           }
@@ -227,8 +244,24 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
               continue;
           }
           if(is_composer){
-            draw_spriteComposer(target_scene,texture_sys,i,render_dat->z_index,screen_x,screen_y,angle,data_transform->initialAngle,flipped);
+            float render_x=screen_x;
+            float render_y=screen_y;
+            if(HasComponentBit(mask_entity,RIGIDBODY_COMP)){
+               RigidBody_Data* rb=body_sys->get_body(index);
+               float old_x=rb->last_MoveX-left_cam;
+               float old_y=(rb->last_MoveY*-1)-bottom_cam;
+               render_y=Math_G::lerp_Value(old_y,screen_y,alpha);
+               render_x=Math_G::lerp_Value(old_x,screen_x,alpha);
+            }
+            draw_spriteComposer(target_scene,texture_sys,index,render_dat->z_index,render_x,render_y,angle,data_transform->initialAngle,flipped);
             continue;
+          }
+          if(HasComponentBit(mask_entity,RIGIDBODY_COMP)){
+               RigidBody_Data* rb=body_sys->get_body(index);
+               float old_x=(rb->last_MoveX-(rect_sprite.w*0.5))-left_cam;
+               float old_y=((rb->last_MoveY*-1)-(rect_sprite.h*0.5))-bottom_cam;
+               rect_obj.y=Math_G::lerp_Value(old_y,rect_obj.y,alpha);
+               rect_obj.x=Math_G::lerp_Value(old_x,rect_obj.x,alpha);
           }
           SDL_Point point_pivot;
           point_pivot.x=rect_sprite.w*0.5;
@@ -237,9 +270,11 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
               tex,
               rect_obj,
               rect_sprite,
+              color,
               point_pivot,
               angle,
               render_dat->z_index,
+              false,
               flipped,
               false
           });
@@ -276,12 +311,135 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
         SDL_RenderCopyEx(main_render,tex,&rect_sprite,&rect_world,static_cast<double>(angle),&pivot,flip_val);
 
     }
+    render_queue.clear();
+
+}
+
+//Draw Particles
+void Render_DrawSystem::draw_Particles(textureManager_system* texture_sys,Camera2D* cam){
+    for (const RenderCommand& cmd:render_queue){
+
+        SDL_Texture* tex=cmd.tex_id;
+        SDL_Rect rect_world=cmd.rect_world;
+        bool render_colliderborder=cmd.render_ColliderborderOnly;
+        if(tex==NULL){
+            SDL_SetRenderDrawColor(main_render,cmd.color.r,cmd.color.g,cmd.color.b,cmd.color.a);
+            SDL_RenderFillRect(main_render,&rect_world);
+            continue;
+        }
+        SDL_Rect rect_sprite=cmd.rect_sprite;
+        SDL_Point pivot=cmd.pivot;
+        uint16_t angle=cmd.angle;
+        bool flipped=cmd.flipped;
+        auto flip_val=SDL_FLIP_NONE;
+
+        if(flipped){
+             flip_val=SDL_FLIP_HORIZONTAL;
+        }
+        SDL_RenderCopyEx(main_render,tex,&rect_sprite,&rect_world,static_cast<double>(angle),&pivot,flip_val);
+   }
+   render_queue.clear();
 
 }
 
 //Draw UI
-void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target_scene,uint16_t ui_id){
+void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target_scene){
+    Transform_System* transf_sys=target_scene->get_transform_sys();
+    Render_System* render_sys=target_scene->get_render_sys();
 
+    for(uint16_t i=0;i<target_scene->get_count_entities();i++){
+          std::bitset<64> mask_entity=target_scene->get_mask(i);
+          if(HasComponentBit(mask_entity,UI_COMP)==false){
+             continue;
+          }
+          Transform_Data* data_transform=transf_sys->get_transform(i);
+          float x=data_transform->x;
+          float y=data_transform->y;
+          bool flipped=data_transform->flipped;
+          uint16_t width=32;
+          uint16_t height=32;
+          SDL_Rect rect;
+          SDL_Color color;
+          bool is_rendered=false;
+          bool is_composer=false;
+          uint8_t z_index=0;
+
+
+
+          if(HasComponentBit(mask_entity,RENDER_COMP)){
+             is_rendered=true;
+          }
+          if(HasComponentBit(mask_entity,SPRITECOMPOSER_COMP)){
+             is_composer=true;
+          }
+          SDL_Texture* tex=NULL;
+          SDL_Rect rect_sprite;
+          if(is_rendered){
+             Render_data* render_dat=render_sys->get_render(i);
+             if(render_dat->visible==false){
+                 continue;
+             }
+             z_index=render_dat->z_index;
+             tex=texture_sys->get_texture_fromSprite(rect_sprite,render_dat->sprite_id);
+          }
+
+          rect.x=x;
+          rect.y=y;
+          if(tex!=NULL){
+            width=rect_sprite.w;
+            height=rect_sprite.h;
+          }
+          rect.w=width;
+          rect.h=height;
+          if(is_composer){
+
+             draw_spriteComposer(target_scene,texture_sys,i,z_index,x,y,0,0,flipped);
+             continue;
+          }
+
+          SDL_Point point_pivot;
+          point_pivot.x=rect_sprite.w*0.5;
+          point_pivot.y=rect_sprite.h*0.5;
+          render_queue.push_back({
+              tex,
+              rect,
+              rect_sprite,
+              color,
+              point_pivot,
+              0,
+              z_index,
+              false,
+              flipped,
+              false
+          });
+          std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
+                 return a.z_index<b.z_index;
+          });
+
+    }
+
+    for (const RenderCommand& cmd:render_queue){
+
+        SDL_Texture* tex=cmd.tex_id;
+        SDL_Rect rect_world=cmd.rect_world;
+        bool render_colliderborder=cmd.render_ColliderborderOnly;
+        if(tex==NULL){
+            SDL_SetRenderDrawColor(main_render,cmd.color.r,cmd.color.g,cmd.color.b,cmd.color.a);
+            SDL_RenderFillRect(main_render,&rect_world);
+            continue;
+        }
+        SDL_Rect rect_sprite=cmd.rect_sprite;
+        SDL_Point pivot=cmd.pivot;
+        uint16_t angle=cmd.angle;
+        bool flipped=cmd.flipped;
+        auto flip_val=SDL_FLIP_NONE;
+
+        if(flipped){
+             flip_val=SDL_FLIP_HORIZONTAL;
+        }
+        SDL_RenderCopyEx(main_render,tex,&rect_sprite,&rect_world,static_cast<double>(angle),&pivot,flip_val);
+    }
+    render_queue.clear();
 }
 
 //Draw the Sprite Composer
@@ -329,13 +487,16 @@ void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_
       SDL_Point point_pivot;
       point_pivot.x=rect_sprite.w*0.5;
       point_pivot.y=rect_sprite.h*0.5;
+      SDL_Color color;
       render_queue.push_back({
         tex,
         rect_obj,
         rect_sprite,
+        color,
         point_pivot,
         total_angle,
         z_index,
+        false,
         flipped,
         false
        });
@@ -365,12 +526,18 @@ void  Render_DrawSystem::draw_tilemap(textureManager_system* texture_sys,System_
     float bottom_cam=cam->getBottom();
     uint32_t tiles_size=tilemap->get_tiles_size();
     int32_t layer_width=static_cast<int32_t>(tilemap->get_width_layer(0));
+    int32_t layer_height=static_cast<int32_t>(tilemap->get_height_layer(0));
     uint8_t layers_count=tilemap->get_layers_count();
     uint32_t min_col=std::max(0,static_cast<int32_t>(std::floor(left_cam/tiles_size)));
     uint32_t max_col=std::min(layer_width-1,static_cast<int32_t>(std::floor(right_cam/tiles_size)));
     uint32_t min_row=std::max(0,static_cast<int32_t>(std::floor(bottom_cam/tiles_size)));
     uint32_t max_row=std::min(layer_width-1,static_cast<int32_t>(std::floor(top_cam/tiles_size)));
-
+    if(max_col>=layer_width){
+       max_col=layer_width-1;
+    }
+    if(max_row>=layer_height){
+         max_row=layer_height-1;
+    }
     for(uint32_t row=min_row;row<=max_row;row++){
        uint32_t row_offset=row*layer_width;
        for(uint32_t column=min_col;column<=max_col;column++){

@@ -245,6 +245,8 @@ struct RigidBody_Data{
   float offsetCenterY;
   float Last_ForceX;
   float Last_ForceY;
+  float last_MoveX;
+  float last_MoveY;
   float last_Angular_Force;
   float damping;
   float angular_damping;

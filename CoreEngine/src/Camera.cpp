@@ -67,6 +67,22 @@ bool Camera2D::hasMoved_significantly(){
   return((dx*dx)+(dy*dy)>(threshold*threshold));
 }
 
+//Get the Entities from Quatree and store the Ids
+void Camera2D::get_entities_Quatree(Quatree_System* quatree_sys){
+   if(quatree_sys==NULL){
+      return;
+   }
+   float cx=x+(width_viewport*0.5);
+   float cy=(y+(height_viewport*0.5))*-1;
+   float left=cx-width_viewport;
+   float right=cx+width_viewport;
+   float top=cy+height_viewport;
+   float bottom=cy-height_viewport;
+   near_entities=quatree_sys->get_entities_fromRect(left,right,top,bottom);
+
+}
+
+
 
 /*Getter Methods (Positions of Camera Rect)*/
 
@@ -89,4 +105,10 @@ float Camera2D::getBottom(){
 float Camera2D::getTop(){
     return y+height_viewport;
 
+}
+
+
+//Get the List of Entities Id Near to Camera
+std::vector<uint16_t> Camera2D::get_NearEntities(){
+   return near_entities;
 }

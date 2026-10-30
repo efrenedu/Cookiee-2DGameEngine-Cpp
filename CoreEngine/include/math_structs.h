@@ -29,6 +29,7 @@ namespace Math_G{
     const float Wrap_AngleAccumulated(float new_radians,float last_radians,float radians_accumulated);
     const float get_angle_fromVector(float x ,float y);
     const std::vector<float> Smooth_Vector(float x_target,float y_target,float x_origin ,float y_origin,float smooth_value);
+    const float lerp_Value(float start_val,float end_val,float alpha);
 };
 
 

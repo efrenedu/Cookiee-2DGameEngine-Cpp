@@ -2,8 +2,8 @@
 #include "iostream"
 #include <SDL.h>
 
-//Update the Timer
-void Timer_System:: update(){
+//Update the Delta Time
+void Timer_System::update_deltaTime(){
    if(tick_perFrame==0){
        if(target_fps>0){
           tick_perFrame=(1000.0f/(float)target_fps);
@@ -18,15 +18,22 @@ void Timer_System:: update(){
    if(counter_frecuency>0){
      delta_counter=(float)((Now_Counter-last_Counter)/(float)counter_frecuency);
    }
-   float elapsed_counter=delta_counter*1000.0f;
-   float  elapsed=Now_Counter-last_Counter;
-   if(elapsed>0){
-      float fps=(float)counter_frecuency/elapsed;
-   }
-   if(elapsed_counter<tick_perFrame){
-      SDL_Delay(tick_perFrame-elapsed_counter);
-   }
 }
+
+//Limit Frequency of Updates
+void Timer_System::Limit_frames(uint64_t start_time){
+   float  elapsed=Now_Counter-last_Counter;
+   uint64_t end_frame=SDL_GetPerformanceCounter();
+   uint64_t dif_frames=((end_frame-start_time)/counter_frecuency);
+   if(dif_frames>0){
+      float fps=(float)counter_frecuency/(float)dif_frames;
+   }
+   if(dif_frames<tick_perFrame){
+      SDL_Delay(tick_perFrame-dif_frames);
+   }
+
+}
+
 
 //Init the Timer
 void Timer_System::Init(uint8_t limit_fps){

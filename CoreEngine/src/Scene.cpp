@@ -34,8 +34,10 @@ void Scene::Init(ma_engine* engine,std::unordered_map<std::string,std::unordered
       next_scene=0;
    }
    audio_sys.Init_System(engine,music_volume,audio_volume);
+   quatree_sys.Init(3);
    last_entity=0;
    entities_changes_transform=true;
+   threshold_updateQuatree_Entity=0;
 }
 
 //Free Memory of Scene and Systems
@@ -50,6 +52,8 @@ void Scene::free_memory(){
    anim_sys.Free_System();
    join_sys.free_system();
    spriteComposerSys.Free_Memory();
+   UI_sys.Free_Memory();
+   quatree_sys.clear_World();
    components_masks.clear();
    list_scenes.clear();
 }
@@ -87,6 +91,9 @@ void Scene::reserve_memory(int16_t num_elements,map<uint8_t,uint16_t> components
               spriteComposerSys.Reserve(components_count[i],num_elements,0xFFFF);
               break;
            }
+           case components_types::UI_COMP:{
+              break;
+           }
            case components_types::PLAYER_COMP:{
               player_sys.reserve_memory(components_count[i],num_elements,0xFFFF);
               break;
@@ -108,14 +115,24 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
    anim_sys.update_system(dt);
    uint8_t draw_request=REDRAW_NONE;
    //update entities scripts
-   for(uint16_t i=0;i<last_entity;i++){
-      std::bitset<64> mask=components_masks[i];
+   std::vector<uint16_t> near_camera=main_camera.get_NearEntities();
+   for(uint16_t index:near_camera){
+      std::bitset<64> mask=components_masks[index];
+      if(HasComponentBit(mask,RIGIDBODY_COMP)){
+          RigidBody_Data*rb=rigidbd_sys.get_body(index);
+          if(rb->b2bodyPtr!=NULL){
+            if(rb->active==true && rb->b2bodyPtr->IsEnabled()==false){
+                 rb->b2bodyPtr->SetEnabled(true);
+            }
+          }
+
+      }
       if(HasComponentBit(mask,PLAYER_COMP)){
-           player_sys.update_player(mask,i,this,dt,input_sys);
+           player_sys.update_player(mask,index,this,dt,input_sys);
       }
       if(HasComponentBit(mask,ANIMATOR_COMP) && HasComponentBit(mask,RENDER_COMP)){
-            Render_data* render=render_sys.get_render(i);
-            Animator_Data* anim=anim_sys.get_animator(i);
+            Render_data* render=render_sys.get_render(index);
+            Animator_Data* anim=anim_sys.get_animator(index);
             if(anim->loaded==false){
                  continue;
             }
@@ -128,6 +145,9 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
             }
       }
 
+   }
+   if(quatree_sys.Process_Reassign(this)==true){
+       main_camera.get_entities_Quatree(&quatree_sys);
    }
    main_camera.follow_target(this);
    if(main_camera.hasMoved_significantly()){
@@ -151,6 +171,11 @@ void Scene::register_entity(int16_t entity_Id,std::bitset<64> mask,const Entity_
                process_target_component(type_target,props,entity_Id);
            }
      }
+     Entity_TreeData tree_dat;
+     Transform_Data* transf=transf_sys.get_transform(last_entity);
+     tree_dat.last_x=transf->x;
+     tree_dat.last_y=transf->y;
+     entities_quatree_dat.push_back(tree_dat);
      last_entity++;
 }
 
@@ -162,7 +187,7 @@ void Scene::process_target_component(components_types comp_type,const Entity_Pro
     if(comp_type<=JOINT_COMP){
          process_basic_component(comp_type,props,id_entity);
     }
-    else if(comp_type>JOINT_COMP && comp_type<=CANVAS_COMP){
+    else if(comp_type==UI_COMP){
          process_ui_component(comp_type,props,id_entity);
     }
     else{
@@ -400,17 +425,56 @@ void Scene::load_sceneSource(SDL_Renderer* render_win,uint8_t load_mode){
    }
    std::string next_scene_path=list_scenes[next_scene];
    Scene_Loader loader;
-   loader.LoadSceneTiledXML(next_scene_path.c_str(),render_win,this,sys_tilemap,sys_textures,audio_sys,physic_material_sys);
+   float w_map;
+   float h_map;
+   loader.LoadSceneTiledXML(next_scene_path.c_str(),render_win,this,sys_tilemap,sys_textures,audio_sys,physic_material_sys,w_map,h_map);
    next_scene=-1;
+   std::vector<uint16_t> entities_send;
+   entities_send.reserve(last_entity);
+   for(uint16_t i=0;i<last_entity;i++){
+      entities_send.push_back(i);
+   }
+   quatree_sys.Set_World(this,w_map,h_map,entities_send,entities_quatree_dat);
    audio_sys.play_music(0,true,0);
+   main_camera.get_entities_Quatree(&quatree_sys);
+   float best_dim=(w_map>h_map)?w_map:h_map;
+   uint8_t max_depth=quatree_sys.get_max_depth();
+   float porcent_distance=0.4;
+   threshold_updateQuatree_Entity=porcent_distance*best_dim*Math_G::Pow(0.5,max_depth+1);
 }
 
 //the Transform of a Entity Change
 void Scene::transform_change(uint16_t id){
-   if(entities_changes_transform==true){
-        return;
+
+   std::vector<uint16_t> near_cam=main_camera.get_NearEntities();
+   bool is_near=false;
+   for(uint16_t index:near_cam){
+      if(index==id){
+         Transform_Data* transf=transf_sys.get_transform(id);
+         is_near=true;
+         float distX=Math_G::Abs(entities_quatree_dat[id].last_x-transf->x);
+         float distY=Math_G::Abs(entities_quatree_dat[id].last_y-transf->y);
+
+         if(distX>=threshold_updateQuatree_Entity || distY>=threshold_updateQuatree_Entity){
+            entities_quatree_dat[id].last_x=transf->x;
+            entities_quatree_dat[id].last_y=transf->y;
+            quatree_sys.request_reassignEntity(id);
+         }
+
+         break;
+      }
    }
-   entities_changes_transform=true;
+   if(HasComponentBit(components_masks[id],RIGIDBODY_COMP) && is_near==false){
+       RigidBody_Data* rb=rigidbd_sys.get_body(id);
+
+       if(rb->b2bodyPtr!=NULL){
+          rb->b2bodyPtr->SetEnabled(false);
+       }
+   }
+   if(is_near && entities_changes_transform==false){
+
+      entities_changes_transform=true;
+   }
 }
 
 //Return True if is Necessary Load a New Scene
@@ -574,7 +638,21 @@ SpriteComposer_System* Scene::get_SpriteComposer_sys(){
   return &spriteComposerSys;
 }
 
+//Get the UI System
+UI_System* Scene::get_UI_sys(){
+   return &UI_sys;
+}
+
+
 //Get Player System
 Player_System* Scene::get_player_sys(){
    return &player_sys;
+}
+
+//Get the Entity Tree Data Required for Quatree Updates
+Entity_TreeData* Scene:: get_entity_treeData(uint16_t id){
+   if(id>=entities_quatree_dat.size()){
+      return NULL;
+   }
+   return &entities_quatree_dat[id];
 }

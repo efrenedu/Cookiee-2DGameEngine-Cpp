@@ -1,7 +1,9 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 #include<cstdint>
+#include<vector>
 class Scene;
+class Quatree_System;
 
 //The Camera of Scene
 struct Camera2D{
@@ -12,10 +14,13 @@ struct Camera2D{
     void set_viewport(uint16_t w_view,uint16_t h_view);
     void set_position(float new_x,float new_y);
     bool hasMoved_significantly();
+    void get_entities_Quatree(Quatree_System* quatree_sys);
     float getLeft();
     float getRight();
     float getBottom();
     float getTop();
+    std::vector<uint16_t> get_NearEntities();
+
   private:
     uint16_t width_viewport=400;
     uint16_t height_viewport=400;
@@ -30,6 +35,7 @@ struct Camera2D{
     float offset_targetX=0.0;
     float offset_targetY=0.0f;
     bool get_TargetSize;
+    std::vector<uint16_t> near_entities;
 
 
 };

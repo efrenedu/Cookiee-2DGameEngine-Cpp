@@ -43,6 +43,10 @@ uint32_t TileLayer:: get_width(){
    return width;
 }
 
+//Get the Height of Layer(Number of Rows)
+uint32_t TileLayer:: get_height(){
+   return height;
+}
 //Get the Sprite Index of Indicated Tile by Id
 uint16_t TileLayer:: get_sprite_index(uint32_t tile_index){
     if(tile_index<0 || tile_index>=tiles.size()){
@@ -96,6 +100,13 @@ uint32_t System_TileMap::get_width_layer(uint8_t layer_index){
    return layers[layer_index].get_width();
 }
 
+//Get the Height (Row Count) of Tile Layer
+uint32_t System_TileMap::get_height_layer(uint8_t layer_index){
+   if(layer_index<0 || layer_index>=layers.size()){
+       return 0;
+   }
+   return layers[layer_index].get_height();
+}
 //Get Sprite Id from the Indicated Tile Index of Tile Layer
 uint16_t System_TileMap::get_sprite_tile(uint8_t layer_index,uint32_t index_tile){
    if(layer_index<0 || layer_index>=layers.size()){
@@ -121,3 +132,4 @@ uint8_t System_TileMap::get_tiles_size(){
 uint8_t System_TileMap::get_layers_count(){
    return layers.size();
 }
+

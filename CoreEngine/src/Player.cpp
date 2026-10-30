@@ -42,7 +42,7 @@ void Player_System::update_player(std::bitset<64> mask,uint16_t id,Scene* target
    //  target_scene->get_rigidbody_sys()->set_velocity(id,30*dt,rb->Last_ForceY+f_y);
      x_f=10*dt;
   }
-   target_scene->get_rigidbody_sys()->add_force(id,x_f,f_y);
+  target_scene->get_rigidbody_sys()->add_force(id,x_f,f_y);
 
 }
 

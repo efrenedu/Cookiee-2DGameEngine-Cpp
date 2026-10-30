@@ -5,7 +5,8 @@
 //System for Mange the Time of System
 struct Timer_System{
     public:
-        void update();
+        void update_deltaTime();
+        void Limit_frames(uint64_t start_frame);
         void Init(uint8_t limit_fps);
         float get_delta_time();
         float get_ticks_frame();

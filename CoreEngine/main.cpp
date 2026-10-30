@@ -64,7 +64,8 @@ int main( int argc, char* argv[] ){
             physic_engine.loadWorld(&target_scene);
         }
         //Update Scene and Systems
-        timer_scene.update();
+        uint64_t start_time=SDL_GetPerformanceCounter();
+        timer_scene.update_deltaTime();
         physic_engine.update_world(timer_scene.get_delta_time(),&target_scene);
         target_scene.update_scene(&render_sys,timer_scene.get_delta_time(),&input_sys,&game_config);
         physic_engine.update(&target_scene);
@@ -81,7 +82,7 @@ int main( int argc, char* argv[] ){
                 default:break;
             }
         }
-        SDL_Delay( timer_scene.get_ticks_frame());
+        timer_scene.Limit_frames(start_time);
     }
     //free SDL Pointers and Systems from memory
     physic_engine.clear_world();

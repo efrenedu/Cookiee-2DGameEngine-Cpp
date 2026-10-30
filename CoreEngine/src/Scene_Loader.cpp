@@ -4,7 +4,7 @@
 #include<Scene.h>
 
 //Load Scene Frome Tiled TMX File
-bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_win,Scene* target_scene,System_TileMap& tilemap,textureManager_system& tex_sys,Audio_System& audio_sys,Physic_Material_System& physic_sys){
+bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_win,Scene* target_scene,System_TileMap& tilemap,textureManager_system& tex_sys,Audio_System& audio_sys,Physic_Material_System& physic_sys,float& w_mapPixels,float& h_mapPixels){
     pugi::xml_document doc;
 
     // Carga el archivo directamente desde disco a la memoria
@@ -28,6 +28,8 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
     uint16_t h_tile=sceneNode.attribute("tileheight").as_uint();
     uint32_t w_map=sceneNode.attribute("width").as_uint();
     uint32_t h_map=sceneNode.attribute("height").as_uint();
+    w_mapPixels=w_map*w_tile;
+    h_mapPixels=h_map*h_tile;
     uint8_t num_sounds=0;
     uint8_t num_musics=0;
     std::unordered_map<uint32_t,uint16_t> hashEntities;

@@ -107,7 +107,7 @@ const float Math_G::Abs(float val){
 
 //Return the Pow Value of a Number
 const float Math_G::Pow(float pow_val,float number_val){
-    return pow(number_val,pow_val);
+    return pow(pow_val,number_val);
 }
 
 //wrap an Angle between -PI and PI
@@ -157,3 +157,8 @@ const std::vector<float> Math_G::Smooth_Vector(float x_target,float y_target,flo
    std::vector<float>res={res_x,res_y};
    return res;
 }
+
+//Smooth a value
+ const float Math_G::lerp_Value(float start_val,float end_val,float alpha){
+    return start_val+((end_val-start_val)*alpha);
+ }
