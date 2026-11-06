@@ -3,7 +3,7 @@
 #include "math_structs.h"
 
 //Init the Scene  and Systems of It using Config Game Data
-void Scene::Init(ma_engine* engine,std::unordered_map<std::string,std::unordered_map<std::string,std::string>> game_config){
+bool Scene::Init(ma_engine* engine,std::unordered_map<std::string,std::unordered_map<std::string,std::string>> game_config){
    next_scene=-1;
    if(game_config.find("Scenes")!=game_config.end()){
       std::unordered_map<std::string,std::string> scenes_config=game_config["Scenes"];
@@ -30,14 +30,20 @@ void Scene::Init(ma_engine* engine,std::unordered_map<std::string,std::unordered
         audio_volume=Math_G::Clamp(Converter::strTo_Float(audio_config["Sfx_Volume"]),0,1.0);
       }
    }
-   if(list_scenes.size()>0){
-      next_scene=0;
+   if(list_scenes.size()<=0){
+      std::cout<<"Fail Getting Scenes"<<std::endl;
+      return false;
    }
+   if(script_sys.Init()==false){
+      return false;
+   }
+   next_scene=0;
    audio_sys.Init_System(engine,music_volume,audio_volume);
    quatree_sys.Init(3);
    last_entity=0;
    entities_changes_transform=true;
    threshold_updateQuatree_Entity=0;
+   return true;
 }
 
 //Free Memory of Scene and Systems
@@ -54,6 +60,7 @@ void Scene::free_memory(){
    spriteComposerSys.Free_Memory();
    UI_sys.Free_Memory();
    quatree_sys.clear_World();
+   fonts_sys.free_System();
    components_masks.clear();
    list_scenes.clear();
 }
@@ -92,6 +99,7 @@ void Scene::reserve_memory(int16_t num_elements,map<uint8_t,uint16_t> components
               break;
            }
            case components_types::UI_COMP:{
+              UI_sys.Reserve_Memory(components_count[i],num_elements,0xFFFF);
               break;
            }
            case components_types::PLAYER_COMP:{
@@ -111,6 +119,7 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
    if(dt>1.0){
       return;
    }
+   UI_sys.update(dt);
    audio_sys.update_system(game_config_sys);
    anim_sys.update_system(dt);
    uint8_t draw_request=REDRAW_NONE;
@@ -165,6 +174,7 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
 //Register the Entity in each Component System Requerid
 void Scene::register_entity(int16_t entity_Id,std::bitset<64> mask,const Entity_Props& props){
      components_masks.push_back(mask);
+     bool is_ui=false;
      for (uint8_t i=0;i<COMP_COUNT;i++){
            components_types type_target=static_cast<components_types>(i);
            if(HasComponentBit(mask,type_target)){
@@ -181,6 +191,7 @@ void Scene::register_entity(int16_t entity_Id,std::bitset<64> mask,const Entity_
 
 // Process the Register of a Component On the Requerid System
 void Scene::process_target_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity){
+
     if(comp_type==UKNOW_COMP){
          return;
     }
@@ -201,10 +212,8 @@ void Scene::process_target_component(components_types comp_type,const Entity_Pro
 void Scene::process_basic_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity){
    switch(comp_type){
        case components_types::TRANSFORM_COMP:{
-          float w_entity=props.get_float("width",0);
-          float h_entity=props.get_float("height",0);
-          float px=props.get_float("position_x",0.0)+(w_entity*0.5);
-          float py=props.get_float("position_y",0.0)-(h_entity*0.5);
+          float px=props.get_float("position_x",0.0);
+          float py=props.get_float("position_y",0.0);
           uint16_t scale=props.get_uint("scale",1);
           bool flip=props.get_bool("flip",false);
           float rot=props.get_float("rotation",0.0);
@@ -396,7 +405,108 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
 
 //Process only UI Components
 void Scene::process_ui_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity){
+   uint8_t ui_count=props.get_uint("UI_Count",0);
+   uint8_t ev_Select_count=props.get_uint("UI_OnSelect_Count",0);
+   uint8_t ev_Unselect_count=props.get_uint("UI_OnUnSelect_Count",0);
+   uint8_t ev_load_count=props.get_uint("UI_OnLoad_Count",0);
+   UI_header header;
 
+   header.centerX=props.get_int("UI_CenterX",0.0);
+   header.centerY=props.get_int("UI_CenterY",0.0);
+   header.half_width=props.get_uint("UI_HalfWidth",0.0);
+   header.half_height=props.get_uint("UI_HalfHeight",0.0);
+   std::vector<uint8_t>evs_select;
+   std::vector<uint8_t>evs_unselect;
+   std::vector<uint8_t>evs_load;
+   evs_select.reserve(ev_Select_count);
+   evs_unselect.reserve(ev_Unselect_count);
+   evs_load.reserve(ev_load_count);
+
+   for(uint8_t i=0;i<ev_Select_count;i++){
+       std::string str_index=to_string(i);
+       uint8_t next_ev=props.get_uint("UI_Select_Event_"+str_index,0);
+       evs_select.push_back(next_ev);
+   }
+   for(uint8_t i=0;i<ev_Unselect_count;i++){
+       std::string str_index=to_string(i);
+       uint8_t next_ev=props.get_uint("UI_Unselect_Event_"+str_index,0);
+       evs_select.push_back(next_ev);
+   }
+   for(uint8_t i=0;i<ev_load_count;i++){
+       std::string str_index=to_string(i);
+       uint8_t next_ev=props.get_uint("UI_Load_Event_"+str_index,0);
+       evs_select.push_back(next_ev);
+   }
+   header.evs_Select=evs_select;
+   header.evs_Load=evs_load;
+   header.evs_Unselect=evs_unselect;
+   bool has_text=false;
+   for(uint8_t i=0;i<ui_count;i++){
+      std::string str_index=to_string(i);
+      uint8_t ui_type=props.get_uint("UI_type_"+str_index,UI_NONE);
+
+      switch(ui_type){
+          case UI_BUTTON:{
+               std::vector<uint16_t> colors;
+               std::vector<uint16_t> sprites;
+               bool is_animated=props.get_bool("UI_Button_Animated",false);;
+               colors.reserve(3);
+               sprites.reserve(3);
+               for(uint8_t i=0;i<3;i++){
+                   std::string id_str=to_string(i);
+                   colors.push_back(Converter::str_to_colorPacked(props.get_string("UI_Button_Color_"+id_str,"")));
+                   sprites.push_back(props.get_uint("UI_Button_Sprite_"+id_str,0xFFFF));
+               }
+               UI_sys.register_button(id_entity,colors,sprites,is_animated);
+               break;
+          }
+          case UI_LABEL:{
+             has_text=true;
+             std::vector<uint16_t> colors;
+             colors.reserve(3);
+             int16_t offset_x=props.get_int("UI_Label_Offset_X",0);
+             int16_t offset_y=props.get_int("UI_Label_Offset_Y",0);
+             uint8_t font_index=props.get_uint("Font_Id",0xFF);
+             bool single_line=props.get_bool("UI_Label_Single_Line",true);
+             uint8_t align=props.get_uint("UI_Label_Align",LABEL_ALIGN_LEFT);
+             uint16_t text_box_w=props.get_uint("UI_Label_Text_Box_Width",header.half_width*2);
+             uint16_t text_box_h=props.get_uint("UI_Label_Text_Box_Height",header.half_height*2);
+
+             std::string text=props.get_string("UI_Label_Text","");
+             for(uint8_t i=0;i<3;i++){
+                std::string id_str=to_string(i);
+                colors.push_back(Converter::str_to_colorPacked(props.get_string("UI_Label_Color_"+id_str,"")));
+             }
+             UI_sys.register_label(id_entity,text,colors,align,text_box_w,text_box_h,single_line,offset_x,offset_y,font_index);
+             break;
+          }
+          case UI_VALUEBAR:{
+             break;
+          }
+          case UI_SCROLLBAR:{
+             break;
+          }
+          case UI_RADIOBUTTON:{
+             break;
+          }
+          case UI_CHECKBUTTON:{
+              break;
+          }
+          case UI_PANEL:{
+              break;
+          }
+          case UI_OPTIONBOX:{
+              break;
+          }
+          case UI_COMBOBOX:{
+              break;
+          }
+           default:break;
+
+      }
+   }
+   header.has_text=has_text;
+   UI_sys.register_Header(id_entity,header);
 }
 
 //Process Only Script Components
@@ -427,7 +537,7 @@ void Scene::load_sceneSource(SDL_Renderer* render_win,uint8_t load_mode){
    Scene_Loader loader;
    float w_map;
    float h_map;
-   loader.LoadSceneTiledXML(next_scene_path.c_str(),render_win,this,sys_tilemap,sys_textures,audio_sys,physic_material_sys,w_map,h_map);
+   loader.LoadSceneTiledXML(next_scene_path.c_str(),render_win,this,w_map,h_map);
    next_scene=-1;
    std::vector<uint16_t> entities_send;
    entities_send.reserve(last_entity);
@@ -559,6 +669,11 @@ Camera2D* Scene::get_camera(){
 //Get Texture Manager System
 textureManager_system* Scene::get_texture_system(){
    return &sys_textures;
+}
+
+//Get Font System
+Fonts_System* Scene::get_font_sys(){
+   return &fonts_sys;
 }
 
 //Get Audio System

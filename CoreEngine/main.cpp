@@ -7,7 +7,6 @@
 #include <Converter.h>
 #include <Render_DrawSystem.h>
 #include<Scene.h>
-
 bool playing=true;
 int filter_events(void* user_data,SDL_Event* ev);
 
@@ -17,6 +16,7 @@ int main( int argc, char* argv[] ){
     Render_DrawSystem render_sys;
     Physic_Engine_System physic_engine;
     AudioEngine engine_audio;
+
     //Initialize Basic Systems and SDL
     if( SDL_Init( SDL_INIT_VIDEO| SDL_INIT_AUDIO|SDL_INIT_TIMER |SDL_INIT_EVENTS) < 0 ){
         printf( "SDL could not initialize! SDL_Error: %s\n", SDL_GetError() );
@@ -46,7 +46,11 @@ int main( int argc, char* argv[] ){
           render_sys.Free_System();
           return 0;
     }
-    target_scene.Init(engine_audio.get_engine(),game_config.get_allConfig());
+    if(target_scene.Init(engine_audio.get_engine(),game_config.get_allConfig())==false){
+          engine_audio.free_memory();
+          render_sys.Free_System();
+          return 0;
+    }
     Screen_System screen;
     screen.Init(render_sys.get_win());
     physic_engine.Init(&target_scene,9.8,0.0,-1.0);

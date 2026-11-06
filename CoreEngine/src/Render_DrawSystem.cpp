@@ -1,5 +1,6 @@
 #include "Render_DrawSystem.h"
 #include "math_structs.h"
+#include<sstream>
 
 //Init the System
 bool Render_DrawSystem::Init_System(){
@@ -145,7 +146,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
           float screen_x=x-left_cam;
           float screen_y=y-bottom_cam;
           SDL_Rect rect_obj;
-          SDL_Color color;
+          uint16_t color=0;
 
           std::bitset<64> mask_entity=target_scene->get_mask(index);
           bool is_collider=false;
@@ -323,7 +324,14 @@ void Render_DrawSystem::draw_Particles(textureManager_system* texture_sys,Camera
         SDL_Rect rect_world=cmd.rect_world;
         bool render_colliderborder=cmd.render_ColliderborderOnly;
         if(tex==NULL){
-            SDL_SetRenderDrawColor(main_render,cmd.color.r,cmd.color.g,cmd.color.b,cmd.color.a);
+            uint8_t r,g,b,a;
+            Converter::unpackRGBA4444(cmd.color,r,g,b,a);
+            SDL_Color color;
+            color.r=r;
+            color.g=g;
+            color.b=b;
+            color.a=a;
+            SDL_SetRenderDrawColor(main_render,color.r,color.g,color.b,color.a);
             SDL_RenderFillRect(main_render,&rect_world);
             continue;
         }
@@ -346,20 +354,22 @@ void Render_DrawSystem::draw_Particles(textureManager_system* texture_sys,Camera
 void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target_scene){
     Transform_System* transf_sys=target_scene->get_transform_sys();
     Render_System* render_sys=target_scene->get_render_sys();
-
+    UI_System* ui_sys=target_scene->get_UI_sys();
+    Fonts_System* font_sys=target_scene->get_font_sys();
     for(uint16_t i=0;i<target_scene->get_count_entities();i++){
           std::bitset<64> mask_entity=target_scene->get_mask(i);
           if(HasComponentBit(mask_entity,UI_COMP)==false){
              continue;
           }
           Transform_Data* data_transform=transf_sys->get_transform(i);
+
           float x=data_transform->x;
           float y=data_transform->y;
           bool flipped=data_transform->flipped;
           uint16_t width=32;
           uint16_t height=32;
           SDL_Rect rect;
-          SDL_Color color;
+          uint16_t color=0;
           bool is_rendered=false;
           bool is_composer=false;
           uint8_t z_index=0;
@@ -382,7 +392,6 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              z_index=render_dat->z_index;
              tex=texture_sys->get_texture_fromSprite(rect_sprite,render_dat->sprite_id);
           }
-
           rect.x=x;
           rect.y=y;
           if(tex!=NULL){
@@ -392,9 +401,23 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
           rect.w=width;
           rect.h=height;
           if(is_composer){
-
              draw_spriteComposer(target_scene,texture_sys,i,z_index,x,y,0,0,flipped);
              continue;
+          }
+
+          UI_header* header=ui_sys->get_UIHeader(i);
+          Button* btn=ui_sys->get_button(i);
+          Label* lbl=ui_sys->get_label(i);
+          bool use_color=false;
+          if(btn!=NULL){
+              color=btn->colors_states[btn->actual_state];
+              if(tex==NULL){
+                use_color=true;
+                rect.x=header->centerX-header->half_width;
+                rect.y=header->centerY-header->half_height;
+                rect.w=header->half_width*2;
+                rect.h=header->half_height*2;
+              }
           }
 
           SDL_Point point_pivot;
@@ -408,13 +431,52 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
               point_pivot,
               0,
               z_index,
-              false,
+              use_color,
               flipped,
               false
           });
           std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
                  return a.z_index<b.z_index;
           });
+
+          //draw Text Only if has Texture
+          if(lbl!=NULL ){
+
+             RenderCommand lbl_command;
+             SDL_Rect rect_font;
+             SDL_Rect rect_lbl;
+             rect_lbl.x=x+lbl->offsetx;
+             rect_lbl.y=y+lbl->offsety;
+             rect_lbl.w=0;
+             rect_lbl.h=0;
+             Bitmap_Font* font=font_sys->get_font(lbl->font_index);
+             if(font==NULL){
+                 continue;
+             }
+             SDL_Texture* text_texture= draw_text(font_sys,lbl,rect_font,font);
+             if(text_texture==NULL){
+                 continue;
+             }
+             rect_lbl.w=rect_font.w;
+             rect_lbl.h=rect_font.h;
+             uint16_t color_lbl=lbl->colors_states[lbl->actual_state];
+             lbl_command.z_index=z_index+1;
+             lbl_command.angle=0;
+             lbl_command.flipped=false;
+             lbl_command.pivot=point_pivot;
+             lbl_command.render_ColliderborderOnly=false;
+             lbl_command.use_color=true;
+             lbl_command.color=color_lbl;
+             lbl_command.rect_world=rect_lbl;
+             lbl_command.rect_sprite=rect_font;
+             lbl_command.tex_id=text_texture;
+
+             render_queue.push_back(lbl_command);
+             std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
+                 return a.z_index<b.z_index;
+             });
+          }
+
 
     }
 
@@ -423,11 +485,20 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
         SDL_Texture* tex=cmd.tex_id;
         SDL_Rect rect_world=cmd.rect_world;
         bool render_colliderborder=cmd.render_ColliderborderOnly;
-        if(tex==NULL){
-            SDL_SetRenderDrawColor(main_render,cmd.color.r,cmd.color.g,cmd.color.b,cmd.color.a);
+
+        if(tex==NULL && cmd.use_color){
+            uint8_t r,g,b,a;
+            Converter::unpackRGBA4444(cmd.color,r,g,b,a);
+            SDL_Color color;
+            color.r=r;
+            color.g=g;
+            color.b=b;
+            color.a=a;
+            SDL_SetRenderDrawColor(main_render,color.r,color.g,color.b,color.a);
             SDL_RenderFillRect(main_render,&rect_world);
             continue;
         }
+
         SDL_Rect rect_sprite=cmd.rect_sprite;
         SDL_Point pivot=cmd.pivot;
         uint16_t angle=cmd.angle;
@@ -437,9 +508,116 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
         if(flipped){
              flip_val=SDL_FLIP_HORIZONTAL;
         }
+        if(cmd.use_color){
+            uint8_t r,g,b,a;
+            Converter::unpackRGBA4444(cmd.color,r,g,b,a);
+            SDL_SetTextureColorMod(tex,r,g,b);
+        }
         SDL_RenderCopyEx(main_render,tex,&rect_sprite,&rect_world,static_cast<double>(angle),&pivot,flip_val);
     }
     render_queue.clear();
+}
+
+
+SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_Rect& rect,Bitmap_Font* target_font){
+   if(font_sys==NULL || lbl==NULL || target_font==NULL ){
+      return NULL;
+   }
+    Rendered_Text* last_text=font_sys->get_Rendered_Text(lbl->last_text_index);
+    rect.x=0;
+    rect.y=0;
+    rect.w=0;
+    rect.h=0;
+    if(last_text!=NULL && lbl->has_modify==false){
+        rect.w=last_text->width;
+        rect.h=last_text->height;
+        return last_text->texture_text;
+    }
+
+    std::string text=lbl->text_label;
+
+    uint16_t width_box=lbl->label_boxWidth;
+    uint16_t height_box=lbl->label_boxHeight;
+
+    SDL_Texture* font_texture=target_font->get_texture();
+
+    if(font_texture==NULL){
+         return NULL;
+    }
+    SDL_Texture* initial_target=SDL_GetRenderTarget(main_render);
+    SDL_Texture* new_text_texture=NULL;
+    if(lbl->has_modify==true && last_text!=NULL){
+        new_text_texture=last_text->texture_text;
+        lbl->has_modify=false;
+    }
+    if(new_text_texture==NULL){
+        new_text_texture=SDL_CreateTexture(main_render,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,width_box,height_box);
+        SDL_SetTextureBlendMode(new_text_texture,SDL_BLENDMODE_BLEND);
+    }
+
+    SDL_SetRenderTarget(main_render,new_text_texture);
+    SDL_SetRenderDrawColor(main_render,0,0,0,0);
+    SDL_RenderClear(main_render);
+    uint16_t last_x=0;
+    uint16_t last_y=0;
+    std::vector<std::string> lines;
+    if(lbl->single_line){
+         lines={text};
+    }
+    else{
+       text=wrap_text(text,width_box,target_font);
+       std::vector<char> ignore_chars;
+       lines=Converter::str_toVect(text,'\n',ignore_chars);
+    }
+    uint8_t line_h=0;
+    for(std::string temp_text:lines){
+         if(temp_text.empty()){
+             continue;
+         }
+         if(lbl->align!=LABEL_ALIGN_LEFT){
+            uint16_t w_line=target_font->get_expected_width(temp_text);
+            int16_t dif=width_box-w_line;
+            if(dif>0  ){
+
+                if(lbl->align==LABEL_ALIGN_CENTER){
+                    last_x=dif/2;
+                }
+                else{
+                    last_x=dif;
+                }
+            }
+         }
+         for(uint8_t i=0;i<temp_text.length();i++){
+             char c=temp_text[i];
+             Glyph* letter=target_font->get_letter(c,FONT_VARIANT_NORMAL);
+             if(letter==NULL){
+               continue;
+            }
+            if(line_h==0){
+                line_h=letter->h;
+            }
+            SDL_Rect rect_letter;
+            rect_letter.x=letter->x;
+            rect_letter.y=letter->y;
+            rect_letter.w=letter->w;
+            rect_letter.h=letter->h;
+            SDL_Rect rect_pos;
+            rect_pos.x=last_x;
+            rect_pos.y=last_y;
+            rect_pos.w=letter->w;
+            rect_pos.h=letter->h;
+            SDL_RenderCopy(main_render,font_texture,&rect_letter,&rect_pos);
+            last_x+=letter->w;
+         }
+         last_x=0;
+         last_y+=line_h;
+    }
+    lbl->last_text_index=font_sys->save_text(new_text_texture,width_box,height_box);
+    rect.w=width_box;
+    rect.h=height_box;
+    SDL_SetRenderTarget(main_render,initial_target);
+    return new_text_texture;
+
 }
 
 //Draw the Sprite Composer
@@ -487,7 +665,7 @@ void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_
       SDL_Point point_pivot;
       point_pivot.x=rect_sprite.w*0.5;
       point_pivot.y=rect_sprite.h*0.5;
-      SDL_Color color;
+      uint16_t color=0;
       render_queue.push_back({
         tex,
         rect_obj,
@@ -575,6 +753,8 @@ void  Render_DrawSystem::draw_tilemap(textureManager_system* texture_sys,System_
     }
 
 }
+
+
 
 //The Windows has Resize
 void Render_DrawSystem::On_WindowResize(uint16_t new_w,uint16_t new_h){

@@ -13,9 +13,12 @@ namespace Converter{
     const uint32_t strTo_UInt(std::string val,uint32_t default_value=0);
     const  float strTo_Float(std::string val);
     const double strTo_Double(std::string val);
-    const std::vector<std::string>str_toVect(std::string val);
+    const std::vector<std::string>str_toVect(std::string val,char separator=',',std::vector<char> ignore_chars={'\n','\0',' '});
     const float pixelToMetter(float pxl);
     const float MetterToPixel(float metter_val);
+    const uint16_t str_to_colorPacked(std::string val);
+    const uint16_t packRGBA4444(uint8_t r,uint8_t g,uint8_t b,uint8_t a);
+    const void unpackRGBA4444(uint16_t color,uint8_t&r,uint8_t&g,uint8_t&b,uint8_t&a);
     constexpr float Metter_Factor=32;
 };
 

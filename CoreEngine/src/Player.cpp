@@ -22,12 +22,14 @@ void Player_System::reserve_memory(uint16_t count_player,uint16_t count_entities
 //Update the Player by Id
 void Player_System::update_player(std::bitset<64> mask,uint16_t id,Scene* target_scene,float dt,Input_System* input_sys){
   player_data* ply=get_player(id);
+
   if(ply==NULL){
      return;
   }
   if(HasComponentBit(mask,RIGIDBODY_COMP)==false){
        return;
   }
+  UI_System* ui_sys=target_scene->get_UI_sys();
   uint8_t st=input_sys->get_keyState(SDL_SCANCODE_RIGHT);
   RigidBody_Data* rb=target_scene->get_rigidbody_sys()->get_body(id);
   float f_y=0;

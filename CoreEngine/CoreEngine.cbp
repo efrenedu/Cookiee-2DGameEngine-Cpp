@@ -45,6 +45,7 @@
 			<Add option="-g" />
 			<Add directory="../sdl2/include" />
 			<Add directory="../box2d/include" />
+			<Add directory="../lua/src" />
 		</Compiler>
 		<Linker>
 			<Add option="-m32" />
@@ -64,6 +65,102 @@
 		<ExtraCommands>
 			<Add after="XCOPY $(#sdl2)\bin\*.dll $(TARGET_OUTPUT_DIR) /D /Y" />
 		</ExtraCommands>
+		<Unit filename="../lua/src/lapi.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lauxlib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lbaselib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lcode.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lcorolib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lctype.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/ldblib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/ldebug.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/ldo.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/ldump.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lfunc.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lgc.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/linit.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/liolib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/llex.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lmathlib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lmem.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/loadlib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lobject.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lopcodes.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/loslib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lparser.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lstate.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lstring.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lstrlib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/ltable.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/ltablib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/ltm.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lundump.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lutf8lib.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lvm.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lua/src/lzio.c">
+			<Option compilerVar="CC" />
+		</Unit>
 		<Unit filename="include/Animation.h" />
 		<Unit filename="include/Audio_System.h" />
 		<Unit filename="include/Camera.h" />
@@ -81,6 +178,7 @@
 		<Unit filename="include/Scene.h" />
 		<Unit filename="include/Scene_Loader.h" />
 		<Unit filename="include/Screen.h" />
+		<Unit filename="include/Script_System.h" />
 		<Unit filename="include/SpriteComposer.h" />
 		<Unit filename="include/TileMap.h" />
 		<Unit filename="include/Timer.h" />
@@ -112,6 +210,7 @@
 		<Unit filename="src/Scene.cpp" />
 		<Unit filename="src/Scene_Loader.cpp" />
 		<Unit filename="src/Screen.cpp" />
+		<Unit filename="src/Script_System.cpp" />
 		<Unit filename="src/SpriteComposer.cpp" />
 		<Unit filename="src/TileMap.cpp" />
 		<Unit filename="src/Timer.cpp" />

@@ -22,7 +22,7 @@ enum LOADSCENE_MODES:uint8_t{
 //The Active Scene
 struct Scene{
    public:
-       void Init(ma_engine * engine,std::unordered_map<std::string,std::unordered_map<std::string,std::string>>game_config);
+       bool Init(ma_engine * engine,std::unordered_map<std::string,std::unordered_map<std::string,std::string>>game_config);
        void free_memory();
        void reserve_memory(int16_t num_elements,map<uint8_t,uint16_t> components_count);
        void update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* input_sys,Game_Config_System* game_config_sys);
@@ -37,6 +37,7 @@ struct Scene{
        System_TileMap* get_system_tilemap();
        Camera2D* get_camera();
        textureManager_system* get_texture_system();
+       Fonts_System* get_font_sys();
        Audio_System* get_Audio_sys();
        Physic_Material_System* get_physic_material_sys();
        uint16_t get_count_entities();
@@ -71,6 +72,8 @@ struct Scene{
         Camera2D main_camera;
         textureManager_system sys_textures;
         Audio_System audio_sys;
+        Script_System script_sys;
+        Fonts_System fonts_sys;
         Physic_Material_System physic_material_sys;
         Quatree_System quatree_sys;
         std::vector<std::bitset<64>> components_masks;

@@ -145,15 +145,22 @@ const float Converter::strTo_Float(std::string val){
 }
 
 //Conver a String into a Vector of Strings
-const std::vector<std::string> Converter::str_toVect(std::string val){
+const std::vector<std::string> Converter::str_toVect(std::string val,char separator,std::vector<char> ignore){
    std::vector<std::string> res;
    std::string temp_val="";
    for(int32_t i=0;i<val.length();i++){
        unsigned char c=val[i];
-       if(c=='(' || c==')' || c==' ' || c=='\n' || c=='\0' ){
+       bool ignore_required=false;
+       for (char temp_ignore:ignore){
+          if(temp_ignore==c){
+               ignore_required=true;
+               break;
+          }
+       }
+       if(ignore_required){
           continue;
        }
-       if(c==',' || c==';'){
+       if(c==separator){
              res.push_back(temp_val);
              temp_val="";
         }
@@ -183,9 +190,38 @@ const float Converter::pixelToMetter(float pxl){
     return res;
 }
 
+//Convert a String to Uint16 packedColor
+const uint16_t Converter:: str_to_colorPacked(std::string val){
+    std::vector<std::string> vect_color=str_toVect(val);
+    uint16_t color_packed=0;
+    if(vect_color.size()>=4){
+        uint8_t r=strTo_UInt(vect_color[0]);
+        uint8_t g=strTo_UInt(vect_color[1]);
+        uint8_t b=strTo_UInt(vect_color[2]);
+        uint8_t a=strTo_UInt(vect_color[3]);
+        color_packed=packRGBA4444(r,g,b,a);
+   }
+   return color_packed;
+}
+
 //Convert Metter Value from  Box2d Physic Engine to Pixel Value
 const float Converter::MetterToPixel(float metter_val){
     return metter_val*Metter_Factor;
+}
+
+//Convert a Color RGBA to Uint16
+const uint16_t Converter::packRGBA4444(uint8_t r,uint8_t g,uint8_t b,uint8_t a){
+    return((r>>4) & 0x0F)<<12 |((g>>4) &0x0F)<<8 | ((b>>4)& 0x0F)<<4 | ((a>>4)& 0x0F);
+}
+
+//Convert a uint16 to Color RGBA
+const void Converter::unpackRGBA4444(uint16_t color,uint8_t&r,uint8_t&g,uint8_t&b,uint8_t&a){
+   uint8_t multiply=17;
+   r=((color>>12) & 0x0F)*multiply;
+   g=((color>>8) & 0x0F)*multiply;
+   b=((color>>4) & 0x0F)*multiply;
+   a=((color) & 0x0F)*multiply;
+
 }
 
 

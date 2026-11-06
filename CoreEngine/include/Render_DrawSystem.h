@@ -20,7 +20,7 @@ struct RenderCommand{
   SDL_Texture* tex_id;
   SDL_Rect rect_world;
   SDL_Rect rect_sprite;
-  SDL_Color color;
+  uint16_t color;
   SDL_Point pivot;
   uint16_t angle;
   uint8_t z_index;
@@ -47,7 +47,7 @@ struct Render_DrawSystem
       void On_WindowResize(uint16_t new_w,uint16_t new_h);
     private:
       void draw_spriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,uint8_t z_index,float centerX,float centerY,float angle,float initial_angle,bool flipped);
-
+      SDL_Texture* draw_text(Fonts_System* font_sys,Label*lbl,SDL_Rect& rect,Bitmap_Font* target_font);
       SDL_Renderer* main_render;
       SDL_Renderer* splash_render;
       SDL_Window* main_win;

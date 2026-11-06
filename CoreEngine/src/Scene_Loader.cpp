@@ -4,7 +4,7 @@
 #include<Scene.h>
 
 //Load Scene Frome Tiled TMX File
-bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_win,Scene* target_scene,System_TileMap& tilemap,textureManager_system& tex_sys,Audio_System& audio_sys,Physic_Material_System& physic_sys,float& w_mapPixels,float& h_mapPixels){
+bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_win,Scene* target_scene,float& w_mapPixels,float& h_mapPixels){
     pugi::xml_document doc;
 
     // Carga el archivo directamente desde disco a la memoria
@@ -32,6 +32,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
     h_mapPixels=h_map*h_tile;
     uint8_t num_sounds=0;
     uint8_t num_musics=0;
+    uint8_t num_fonts=0;
     std::unordered_map<uint32_t,uint16_t> hashEntities;
     //Read of Number of Components and Number of Objects
     for(pugi::xml_node tileset_node=sceneNode.child("tileset"); tileset_node; tileset_node = tileset_node.next_sibling("tileset")) {
@@ -53,7 +54,8 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                    case hashString("music"):not_entity=true;num_musics++;break;
                    case hashString("audio"):not_entity=true;num_sounds++;break;
                    case hashString("physic_material"):not_entity=true;num_physic_materials++;break;
-                   case hashString("camera"):not_entity=true;break;
+                   case hashString("camera"):not_entity=true;num_fonts++;break;
+                   case hashString("font"):not_entity=true;break;
                    default: break;
                 }
             }
@@ -84,10 +86,17 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
     }
 
     target_scene->reserve_memory(entities_count,comps_count);
-    tilemap.reserve_memory(layers_tilemap,w_map,h_map,w_tile);
-    tex_sys.reserve_memory(tileset_count);
-    audio_sys.reserve_memory(num_sounds,num_musics);
-    physic_sys.reserve_memory(num_physic_materials);
+    System_TileMap* tilemap_sys=target_scene->get_system_tilemap();
+    textureManager_system* tex_sys=target_scene->get_texture_system();
+    Audio_System* audio_sys=target_scene->get_Audio_sys();
+    Physic_Material_System* physic_sys=target_scene->get_physic_material_sys();
+    Fonts_System* font_sys=target_scene->get_font_sys();
+
+    tilemap_sys->reserve_memory(layers_tilemap,w_map,h_map,w_tile);
+    tex_sys->reserve_memory(tileset_count);
+    audio_sys->reserve_memory(num_sounds,num_musics);
+    physic_sys->reserve_memory(num_physic_materials);
+    font_sys->reserve_memory(num_fonts);
 
     //Read Tilesets
     for(pugi::xml_node tileset_node=sceneNode.child("tileset"); tileset_node; tileset_node = tileset_node.next_sibling("tileset")) {
@@ -97,7 +106,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
        src_temp=src_temp.substr(src_temp.find_last_of("/\\") + 1);
        string src="assets\\tilesets\\"+src_temp;
        uint16_t first_gid=tileset_node.attribute("firstgid").as_uint(16);
-       tex_sys.add_fromTileset(src.c_str(),render_win,first_gid);
+       tex_sys->add_fromTileset(src.c_str(),render_win,first_gid);
     }
     //Read TileMap
     uint8_t layer_actual=0;
@@ -108,7 +117,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
             vector<string>list_indexs=Converter::str_toVect(data);
             for(uint32_t i=0;i<list_indexs.size();i++){
                 uint16_t val_num=Converter::strTo_Int(list_indexs[i]);
-                tilemap.set_tile(layer_actual,i,val_num);
+                tilemap_sys->set_tile(layer_actual,i,val_num);
             }
             layer_actual++;
        }
@@ -121,25 +130,39 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
             Entity_Props props;
             bool not_entity=false;
             //set Transform
-            const char* h=entityNode.attribute("height").as_string();
-            const char* w=entityNode.attribute("width").as_string();
-            props.set_value("width",w);
-            props.set_value("height",h);
+            props.set_value("width",entityNode.attribute("width").as_string());
+            props.set_value("height",entityNode.attribute("height").as_string());
             bool has_texid=false;
             bool is_ui=false;
+            bool initial_visible=true;
             Add_ComponentBit(mask,TRANSFORM_COMP);
+            props.set_value("Ref_position_y",to_string(entityNode.attribute("y").as_float()).c_str());
+            props.set_value("Ref_position_x",to_string(entityNode.attribute("x").as_float()).c_str());
+
             props.set_value("position_x",entityNode.attribute("x").as_string());
             if(pugi::xml_attribute gid_attr=entityNode.attribute("gid")){
                has_texid=true;
-               float temp_y=entityNode.attribute("y").as_float()-entityNode.attribute("height").as_float();
-               props.set_value("position_y",to_string(temp_y*-1).c_str());
+               float h_val=entityNode.attribute("height").as_float();
+               float w_val=entityNode.attribute("width").as_float();
+               float temp_y=(entityNode.attribute("y").as_float()-h_val)*-1;
+               temp_y-=(h_val*0.5);
+               float temp_x=entityNode.attribute("x").as_float()+(w_val*0.5);
+               props.set_value("position_y",to_string(temp_y).c_str());
+               props.set_value("position_x",to_string(temp_x).c_str());
                props.set_value("visible","true");
                props.set_value("gid",entityNode.attribute("gid").as_string());
 
             }
             else{
+                float h_val=entityNode.attribute("height").as_float();
+                float w_val=entityNode.attribute("width").as_float();
                 float temp_y=entityNode.attribute("y").as_float()*-1;
+                temp_y-=(h_val*0.5);
+                float temp_x=entityNode.attribute("x").as_float()+(w_val*0.5);
+
                 props.set_value("position_y",to_string(temp_y).c_str());
+                props.set_value("position_x",to_string(temp_x).c_str());
+
                 props.set_value("visible","false");
 
             }
@@ -153,6 +176,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                props.set_value("rotation",entityNode.attribute("rotation").as_string());
             }
             if(pugi::xml_attribute visible_attr=entityNode.attribute("visible")){
+               initial_visible=Converter::strTo_Boolean(entityNode.attribute("visible").as_string());
                props.set_value("visible",entityNode.attribute("visible").as_string());
             }
             if(pugi::xml_attribute name_attr=entityNode.attribute("name")){
@@ -210,7 +234,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                        src=props.get_string("src_sound","");
                        uint32_t hash_name=hashString(entityNode.attribute("name").as_string());
                        src="assets\\musics\\"+src;
-                       audio_sys.add_clip(src.c_str(),true,hash_name);
+                       audio_sys->add_clip(src.c_str(),true,hash_name);
                        not_entity=true;
                        break;
                     }
@@ -224,7 +248,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                        src=props.get_string("src_sound","");
                        uint32_t hash_name=hashString(entityNode.attribute("name").as_string());
                        src="assets\\sfx\\"+src;
-                       audio_sys.add_clip(src.c_str(),false,hash_name);
+                       audio_sys->add_clip(src.c_str(),false,hash_name);
                        not_entity=true;
                        break;
                     }
@@ -238,15 +262,72 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                        float friction=props.get_float("friction",0.0);
                        float dinamic_friction=props.get_float("dinamic_friction",0.0);
                        float retitution=props.get_float("retitution",0.0);
-                       physic_sys.register_material(friction,dinamic_friction,retitution,hash_name);
+                       physic_sys->register_material(friction,dinamic_friction,retitution,hash_name);
                        not_entity=true;
                        break;
                    }
-                   case "UI"_hash:{is_ui=true;break;}
+                   case "font"_hash:{
+                      uint32_t hash_name=hashString(entityNode.attribute("name").as_string());
+                      pugi::xml_node properties_nodes=entityNode.child("properties");
+                      for(pugi::xml_node target_node=properties_nodes.child("property");target_node;target_node=target_node.next_sibling("property")){
+                          string name_attr=target_node.attribute("name").as_string();
+                          props.set_value(name_attr,target_node.attribute("value").as_string());
+                      }
+                      std::string src=props.get_string("src_font","");
+                      src="assets\\fonts\\"+src;
+                      Font_params params;
+                      params.width_chars=props.get_uint("width_characters",0);
+                      params.height_chars=props.get_uint("height_characters",0);
+                      params.margin_texture=props.get_uint("margin",0);
+                      params.separation_letters=props.get_uint("separation",0);
+                      params.columns_font=props.get_uint("column_count",0);
+                      params.rows_font=props.get_uint("row_count",0);
+                      std::vector<std::string> variantsOffset_xStr=Converter::str_toVect(props.get_string("offset_variantsX",""));
+                      std::vector<std::string> variantsOffset_yStr=Converter::str_toVect(props.get_string("offset_variantsy",""));
+                      std::vector<std::string> variants_avavailables_Str=Converter::str_toVect(props.get_string("available_variants",""));
+
+                      std::vector<uint16_t> variants_offsetx;
+                      std::vector<uint16_t> variants_offsety;
+                      std::vector<bool> available_variants;
+
+                      variants_offsetx.assign(FONT_MAX_VARIANT,0);
+                      variants_offsety.assign(FONT_MAX_VARIANT,0);
+                      available_variants.assign(FONT_MAX_VARIANT,false);
+                      for(uint8_t i=0;i<FONT_MAX_VARIANT;i++){
+                           if(i<variantsOffset_xStr.size()){
+                               variants_offsetx[i]=Converter::strTo_UInt(variantsOffset_xStr[i]);
+                           }
+                           if(i<variantsOffset_yStr.size()){
+                               variants_offsety[i]=Converter::strTo_UInt(variantsOffset_yStr[i]);
+                           }
+                           if(i<variants_avavailables_Str.size()){
+                               available_variants[i]=Converter::strTo_Boolean(variants_avavailables_Str[i]);
+                           }
+                      }
+                      if(available_variants[0]==false){
+                         available_variants[0]=true;
+
+                      }
+                      params.offsetX_variants=variants_offsetx;
+                      params.offsetY_variants=variants_offsety;
+                      params.exist_variant=available_variants;
+                      std::string customDat_src=props.get_string("font_custom_data","");
+
+                      font_sys->add_font(src.c_str(),hash_name,params,render_win);
+                      not_entity=true;
+                      break;
+                   }
+                   case "UI"_hash:is_ui=true;break;
                    default:break;
             }
             if(not_entity==true){
                 continue;
+            }
+            if(is_ui){
+                 props.set_value("position_x",to_string(props.get_float("Ref_position_x",0)));
+                 props.set_value("position_y",to_string(props.get_float("Ref_position_y",0)));
+                 props.set_value("visible",to_string(initial_visible));
+                 Add_ComponentBit(mask,RENDER_COMP);
             }
             pugi::xml_node properties_node=entityNode.child("properties");
             for(pugi::xml_node property_node=properties_node.child("property");property_node;property_node=property_node.next_sibling("property")){
@@ -260,7 +341,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                 }
                 props.set_value(property_id,property_node.attribute("value").as_string());
             }
-            reassign_StringParams(props,physic_sys,hashEntities);
+            reassign_StringParams(props,physic_sys,font_sys,hashEntities);
             target_scene->register_entity(index_entity, mask, props);
             index_entity++;
         }
@@ -272,7 +353,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
 }
 
 //Reassign Expected Text Params from Tiled Scenes to the Correct Format
-void Scene_Loader::reassign_StringParams(Entity_Props& props,Physic_Material_System& physic_sys,std::unordered_map<uint32_t ,uint16_t>hash_names){
+void Scene_Loader::reassign_StringParams(Entity_Props& props,Physic_Material_System* physic_sys,Fonts_System* font_sys,std::unordered_map<uint32_t ,uint16_t>hash_names){
    std::string bd_type_str=props.get_string("body_type","");
    if(!bd_type_str.empty()){
       uint8_t bd_type=get_body_type(bd_type_str.c_str());
@@ -297,7 +378,7 @@ void Scene_Loader::reassign_StringParams(Entity_Props& props,Physic_Material_Sys
    }
    std::string mat_str=props.get_string("physic_material","");
    if(!mat_str.empty()){
-       int8_t id=physic_sys.get_material_id(hashString(mat_str.c_str()));
+       int8_t id=physic_sys->get_material_id(hashString(mat_str.c_str()));
        props.set_value("physic_material",to_string(id));
    }
    //Convert Additional Fixtures of Collider
@@ -333,6 +414,12 @@ void Scene_Loader::reassign_StringParams(Entity_Props& props,Physic_Material_Sys
             new_category=new_category+","+to_string(get_LayerCollider_mask(bits_collider[i].c_str()));
         }
         props.set_value("collider_categoryBits",new_category);
+    }
+    std::string font_name=props.get_string("Font_Id","");
+    if(!font_name.empty()){
+          uint32_t hash_font=hashString(font_name.c_str());
+          uint8_t font_id=font_sys->get_FontId(hash_font);
+          props.set_value("Font_Id",to_string(font_id));
     }
 
 }
