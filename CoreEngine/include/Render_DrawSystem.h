@@ -14,6 +14,11 @@ enum REDRAW_TYPES:uint8_t{
    REDRAW_ENTITIES=1,
    REDRAW_NONE=2,
 };
+enum RENDER_BORDER_TYPE:uint8_t{
+    RENDER_BORDER_NONE=0,
+    RENDER_BORDER_ONLY=1,
+    RENDER_BORDER_APPEND=2
+};
 
 //Store the Data for Draw a Sprite
 struct RenderCommand{
@@ -23,10 +28,10 @@ struct RenderCommand{
   uint16_t color;
   SDL_Point pivot;
   uint16_t angle;
-  uint8_t z_index;
+  int8_t z_index;
   bool use_color;
   bool flipped;
-  bool render_ColliderborderOnly;
+  uint8_t render_border;
 };
 
 //System for Draw  On the SDL Main Windows
@@ -46,7 +51,11 @@ struct Render_DrawSystem
       SDL_Window* get_win();
       void On_WindowResize(uint16_t new_w,uint16_t new_h);
     private:
-      void draw_spriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,uint8_t z_index,float centerX,float centerY,float angle,float initial_angle,bool flipped);
+      void draw_scrollBar(ScrollBar* scroll,textureManager_system* texture_sys,SDL_Rect container_rect,int8_t z_index);
+      void draw_UiSpriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,int8_t z_index,float centerX,float centerY,SDL_Rect& rect_composer);
+      void draw_spriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,int8_t z_index,float centerX,float centerY,float angle,float initial_angle,bool flipped);
+      bool draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect,textureManager_system* texture_sys,int8_t z_index,ValueBar* bar,UI_System* ui_sys);
+
       SDL_Texture* draw_text(Fonts_System* font_sys,Label*lbl,SDL_Rect& rect,Bitmap_Font* target_font);
       SDL_Renderer* main_render;
       SDL_Renderer* splash_render;

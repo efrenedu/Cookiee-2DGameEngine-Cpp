@@ -441,18 +441,21 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
    header.evs_Load=evs_load;
    header.evs_Unselect=evs_unselect;
    bool has_text=false;
+   uint8_t main_type=UI_NONE;
    for(uint8_t i=0;i<ui_count;i++){
       std::string str_index=to_string(i);
       uint8_t ui_type=props.get_uint("UI_type_"+str_index,UI_NONE);
 
       switch(ui_type){
           case UI_BUTTON:{
+               main_type=UI_BUTTON;
                std::vector<uint16_t> colors;
                std::vector<uint16_t> sprites;
                bool is_animated=props.get_bool("UI_Button_Animated",false);;
-               colors.reserve(3);
-               sprites.reserve(3);
-               for(uint8_t i=0;i<3;i++){
+               colors.reserve(4);
+               sprites.reserve(4);
+               uint8_t states_count=4;
+               for(uint8_t i=0;i<states_count;i++){
                    std::string id_str=to_string(i);
                    colors.push_back(Converter::str_to_colorPacked(props.get_string("UI_Button_Color_"+id_str,"")));
                    sprites.push_back(props.get_uint("UI_Button_Sprite_"+id_str,0xFFFF));
@@ -461,6 +464,9 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
                break;
           }
           case UI_LABEL:{
+             if(main_type>=0xFF){
+                 main_type=UI_LABEL;
+             }
              has_text=true;
              std::vector<uint16_t> colors;
              colors.reserve(3);
@@ -473,7 +479,8 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
              uint16_t text_box_h=props.get_uint("UI_Label_Text_Box_Height",header.half_height*2);
 
              std::string text=props.get_string("UI_Label_Text","");
-             for(uint8_t i=0;i<3;i++){
+             uint8_t color_count=3;
+             for(uint8_t i=0;i<color_count;i++){
                 std::string id_str=to_string(i);
                 colors.push_back(Converter::str_to_colorPacked(props.get_string("UI_Label_Color_"+id_str,"")));
              }
@@ -481,24 +488,297 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
              break;
           }
           case UI_VALUEBAR:{
+             main_type=UI_VALUEBAR;
+             uint8_t orientation=props.get_uint("UI_ValueBar_Orientation",UI_ORIENTATION_HORIZONTAL);
+             uint16_t max_width=props.get_uint("UI_ValueBar_Max_Width",0);
+             uint16_t max_height=props.get_uint("UI_ValueBar_Max_Height",0);
+             uint16_t width_bar=props.get_uint("UI_ValueBar_Width",max_width);
+             uint16_t heigh_bar=props.get_uint("UI_ValueBar_Height",max_height);
+             float initial_val=props.get_float("UI_ValueBar_Value",1.0);
+             bool use_bar_colors=props.get_bool("UI_ValueBar_Use_Bar_Colors",true);
+             uint16_t border_val=props.get_uint("UI_ValueBar_Border",0);
+             uint16_t bg_color;
+             uint8_t bar_states_count=3;
+             uint8_t states_count=4;
+             std::vector<uint16_t> bar_sprites;
+             std::vector<uint16_t> bar_colors;
+             std::vector<uint16_t> bg_sprites;
+             bar_sprites.assign(bar_states_count,0xFFFF);
+             bar_colors.assign(bar_states_count,0);
+             bg_sprites.assign(bar_states_count,0xFFFF);
+             for(uint8_t i=0;i<states_count;i++){
+                  std::string id_str=to_string(i);
+                  std::vector<std::string> color_vect=Converter::str_toVect(props.get_string("UI_ValueBar_Color_"+id_str,""));
+                  uint16_t temp_color=0;
+                  if(i<3){
+                      uint16_t temp_sprite=props.get_uint("UI_ValueBar_Bar_Sprite_"+id_str,0xFFFF);
+                      bar_sprites[i]=temp_sprite;
+                      uint16_t temp_bg_sprite=props.get_uint("UI_ValueBar_Bg_Sprite_"+id_str,0xFFFF);
+                      bg_sprites[i]=temp_bg_sprite;
+                  }
+                  if(color_vect.size()>=4){
+                      uint8_t r,g,b,a;
+                      r=Converter::strTo_UInt(color_vect[0]);
+                      g=Converter::strTo_UInt(color_vect[1]);
+                      b=Converter::strTo_UInt(color_vect[2]);
+                      a=Converter::strTo_UInt(color_vect[3]);
+                      temp_color=Converter::packRGBA4444(r,g,b,a);
+                  }
+                  switch(i){
+                     case 0: bar_colors[0]=temp_color;break;
+                     case 1: bar_colors[1]=temp_color;break;
+                     case 2: bar_colors[2]=temp_color;break;
+                     case 3: bg_color=temp_color;break;
+                     default:break;
+                  }
+
+             }
+             UI_sys.register_valueBar(id_entity,initial_val,bar_colors,bar_sprites,border_val,bg_color,bg_sprites,max_width,max_height,orientation,use_bar_colors,width_bar,heigh_bar);
+             break;
+          }
+          case UI_SLIDER:{
+             main_type=UI_SLIDER;
+             uint8_t orientation=props.get_uint("UI_Slider_Orientation",UI_ORIENTATION_HORIZONTAL);
+             uint16_t max_width=props.get_uint("UI_Slider_Max_Width",0);
+             uint16_t max_height=props.get_uint("UI_Slider_Max_Height",0);
+             float initial_val=props.get_float("UI_Slider_Value",1.0);
+             uint16_t bg_sprite=props.get_uint("UI_Slider_Bg_Sprite",0xFFFF);
+             uint16_t bg_color,slider_color,bar_color;
+             uint16_t slider_sprite=props.get_uint("UI_Slider_Slider_Sprite",0xFFFF);
+             uint8_t colors_count=3;
+             for(uint8_t i=0;i<colors_count;i++){
+                  std::string id_str=to_string(i);
+                  std::vector<std::string> color_vect=Converter::str_toVect(props.get_string("UI_Slider_Color_"+id_str,""));
+                  uint16_t temp_color=0;
+                  if(color_vect.size()>=4){
+                      uint8_t r,g,b,a;
+                      r=Converter::strTo_UInt(color_vect[0]);
+                      g=Converter::strTo_UInt(color_vect[1]);
+                      b=Converter::strTo_UInt(color_vect[2]);
+                      a=Converter::strTo_UInt(color_vect[3]);
+                      temp_color=Converter::packRGBA4444(r,g,b,a);
+                  }
+                  switch(i){
+                     case 0: bg_color=temp_color;break;
+                     case 1: bar_color=temp_color;break;
+                     case 2: slider_color=temp_color;break;
+                     default:break;
+                  }
+             }
+             UI_sys.register_slider(id_entity,initial_val,bar_color,bg_color,slider_color,slider_sprite,max_width,max_height,orientation);
              break;
           }
           case UI_SCROLLBAR:{
+             uint16_t default_w=header.half_width*2;
+             uint16_t default_h=header.half_height*2;
+             uint16_t area_w=props.get_uint("UI_ScrollBar_Area_Width",default_w);
+             uint16_t area_h=props.get_uint("UI_ScrollBar_Area_Height",default_h);
+             uint16_t bg_w=props.get_uint("UI_ScrollBar_Bg_Width",default_w);
+             uint16_t bg_h=props.get_uint("UI_ScrollBar_Bg_Height",default_h);
+             float porcentSz_buttons=props.get_float("UI_ScrollBar_Porcent_Buttons",1.0);
+             uint8_t orientation=props.get_uint("UI_ScrollBar_Orientation",UI_ORIENTATION_VERTICAL);
+             uint8_t color_count=6;
+             std::vector<uint16_t> colors_bar;
+             colors_bar.assign(color_count-2,0);
+             uint16_t color_bg=0;
+             uint16_t color_btns=0;
+             for(uint8_t i=0;i<color_count;i++){
+                std::string str_index=to_string(i);
+                std::vector<std::string> colors_vect=Converter::str_toVect(props.get_string("UI_ScrollBar_Color_"+str_index,""));
+                if(colors_vect.size()>=4){
+                    uint8_t r=Converter::strTo_UInt(colors_vect[0]);
+                    uint8_t g=Converter::strTo_UInt(colors_vect[1]);
+                    uint8_t b=Converter::strTo_UInt(colors_vect[2]);
+                    uint8_t a=Converter::strTo_UInt(colors_vect[3]);
+                    uint16_t temp_color=Converter::packRGBA4444(r,g,b,a);
+                    if(i==0){
+                        color_bg=temp_color;
+                    }
+                    else if(i==1){
+                        color_btns=temp_color;
+                    }
+                    else{
+                        colors_bar[i-2]=temp_color;
+                    }
+                }
+             }
+             uint16_t sprite_btns=props.get_uint("UI_ScrollBar_Buttons_Sprite",0xFFFF);
+
+             UI_sys.register_scrollBar(id_entity,bg_w,bg_h,area_w,area_h,color_bg,colors_bar,orientation,porcentSz_buttons,sprite_btns,color_btns);
              break;
           }
           case UI_RADIOBUTTON:{
+             main_type=UI_RADIOBUTTON;
+             uint8_t initial_state=props.get_uint("UI_Radio_Button_State",OPTION_UNCHECKED);
+             std::vector<uint16_t> sprites;
+             std::vector<uint16_t> colors;
+             sprites.assign(3,0xFFFF);
+             colors.assign(3,0);
+             uint8_t states_count=4;
+             for(uint8_t i=0;i<states_count;i++){
+                std::string index_str=to_string(i);
+                uint8_t spr_state=props.get_uint("UI_Radio_Button_SpriteState_"+index_str,0xFFFF);
+                std::vector<std::string> color_vect=Converter::str_toVect(props.get_string("UI_Radio_Button_Color_"+index_str,""));
+                uint16_t temp_color=0;
+                if(color_vect.size()>=4){
+                    uint8_t r=Converter::strTo_UInt(color_vect[0]);
+                    uint8_t g=Converter::strTo_UInt(color_vect[1]);
+                    uint8_t b=Converter::strTo_UInt(color_vect[2]);
+                    uint8_t a=Converter::strTo_UInt(color_vect[3]);
+                    temp_color=Converter::packRGBA4444(r,g,b,a);
+                }
+                colors[i]=temp_color;
+                sprites[i]=spr_state;
+
+             }
+             std::string intern_data=props.get_string("UI_Radio_Button_Data","");
+             uint8_t radio_id=props.get_uint("UI_Radio_Button_RadioId",0);
+             UI_sys.register_RadioButton(id_entity,colors,sprites,initial_state,intern_data,radio_id);
+
              break;
           }
           case UI_CHECKBUTTON:{
+              main_type=UI_CHECKBUTTON;
+              uint8_t initial_state=props.get_uint("UI_Check_Button_State",OPTION_UNCHECKED);
+              std::vector<uint16_t> sprites;
+              std::vector<uint16_t> colors;
+              sprites.assign(4,0xFFFF);
+              colors.assign(4,0);
+              uint8_t states_count=4;
+              for(uint8_t i=0;i<states_count;i++){
+                std::string index_str=to_string(i);
+                uint8_t spr_state=props.get_uint("UI_Check_Button_SpriteState_"+index_str,0xFFFF);
+                std::vector<std::string> color_vect=Converter::str_toVect(props.get_string("UI_Check_Button_Color_"+index_str,""));
+                uint16_t temp_color=0;
+                if(color_vect.size()>=4){
+                    uint8_t r=Converter::strTo_UInt(color_vect[0]);
+                    uint8_t g=Converter::strTo_UInt(color_vect[1]);
+                    uint8_t b=Converter::strTo_UInt(color_vect[2]);
+                    uint8_t a=Converter::strTo_UInt(color_vect[3]);
+                    temp_color=Converter::packRGBA4444(r,g,b,a);
+                }
+                colors[i]=temp_color;
+                sprites[i]=spr_state;
+
+              }
+              std::string intern_data=props.get_string("UI_Check_Button_Data","");
+              UI_sys.register_checkButton(id_entity,colors,sprites,initial_state,intern_data);
               break;
           }
           case UI_PANEL:{
+              main_type=UI_PANEL;
+              std::vector<std::string> bg_color_vect=Converter::str_toVect(props.get_string("UI_Panel_Bg_Color",""));
+              std::vector<std::string> border_color_vect=Converter::str_toVect(props.get_string("UI_Panel_Border_Color",""));
+              uint16_t bg_color=0;
+              uint16_t border_color=0;
+              if(bg_color_vect.size()>=4){
+                uint8_t r=Converter::strTo_UInt(bg_color_vect[0]);
+                uint8_t g=Converter::strTo_UInt(bg_color_vect[1]);
+                uint8_t b=Converter::strTo_UInt(bg_color_vect[2]);
+                uint8_t a=Converter::strTo_UInt(bg_color_vect[3]);
+                bg_color=Converter::packRGBA4444(r,g,b,a);
+              }
+              if(border_color_vect.size()>=4){
+                  uint8_t r=Converter::strTo_UInt(border_color_vect[0]);
+                  uint8_t g=Converter::strTo_UInt(border_color_vect[1]);
+                  uint8_t b=Converter::strTo_UInt(border_color_vect[2]);
+                  uint8_t a=Converter::strTo_UInt(border_color_vect[3]);
+                  border_color=Converter::packRGBA4444(r,g,b,a);
+
+              }
+              bool draw_border=props.get_bool("UI_Panel_Draw_Border",false);
+              UI_sys.register_panel(id_entity,draw_border,bg_color,border_color);
+
               break;
           }
           case UI_OPTIONBOX:{
+              main_type=UI_OPTIONBOX;
               break;
           }
+          case UI_ICON:{
+             main_type=UI_ICON;
+             uint8_t num_sprites=props.get_uint("UI_Icon_Sprites_Count",0);
+             std::vector<uint16_t> list_sprites;
+             for(uint8_t i=0;i<num_sprites;i++){
+                  std::string str_index=to_string(i);
+                  uint16_t next_spr=props.get_uint("UI_Icon_Sprite_"+str_index,0xFFFF);
+                  list_sprites.push_back(next_spr);
+             }
+             bool can_modify_sprite=props.get_bool("UI_Icon_Modify_Sprite",true);
+             UI_sys.register_Icon(id_entity,list_sprites,can_modify_sprite);
+             break;
+          }
           case UI_COMBOBOX:{
+              main_type=UI_COMBOBOX;
+              std::vector<std::string> items;
+              std::vector<uint16_t> colors;
+              colors.assign(4,0);
+              uint8_t max_showItems=props.get_uint("UI_ComboxBox_Max_Items",10);
+              uint16_t max_width=props.get_uint("UI_ComboBox_Width",header.half_width*2);
+              uint16_t min_height=props.get_uint("UI_ComboBox_Min_Height",header.half_height*2);
+              uint16_t max_height=props.get_uint("UI_ComboBox_Max_Height",header.half_height*2);
+              float porcent_button=props.get_float("UI_ComboBox_Button_Size_Porcent",1.0);
+              uint8_t items_count=props.get_uint("UI_ComboBox_Items_Count",0);
+              for(uint8_t i=0;i<items_count;i++){
+                  std::string str_index=to_string(i);
+                  std::string val_item=props.get_string("UI_ComboBox_Item_"+str_index,"");
+                  if(val_item!=""){
+                     items.push_back(val_item);
+                  }
+              }
+              uint8_t color_count=4;
+              for(uint8_t i=0;i<color_count;i++){
+                 std::string str_index=to_string(i);
+                 uint16_t temp_color=0;
+                 std::vector<std::string> color_vect=Converter::str_toVect(props.get_string("UI_ComboBox_Color_"+str_index,""));
+                 if(color_vect.size()>=4){
+                    uint8_t r=Converter::strTo_UInt(color_vect[0]);
+                    uint8_t g=Converter::strTo_UInt(color_vect[1]);
+                    uint8_t b=Converter::strTo_UInt(color_vect[2]);
+                    uint8_t a=Converter::strTo_UInt(color_vect[3]);
+                    temp_color=Converter::packRGBA4444(r,g,b,a);
+                 }
+                 colors[i]=temp_color;
+              }
+              uint16_t sprite_btn=props.get_uint("UI_ComboBox_Sprite_Button",0xFFFF);
+              UI_sys.register_comboBox(id_entity,colors,max_width,min_height,max_height,items,max_showItems,porcent_button,sprite_btn);
+              break;
+          }
+          case UI_LIST:{
+              main_type=UI_LIST;
+              std::vector<std::string> items;
+              uint8_t max_showItems=props.get_uint("UI_ListBox_Max_Items_Show",10);
+              uint16_t items_height=props.get_uint("UI_ListBox_Items_Height",header.half_height*2);
+              uint8_t items_count=props.get_uint("UI_ListBox_Items_Count",0);
+              uint16_t bg_color,items_color,sprite_icon;
+              for(uint8_t i=0;i<items_count;i++){
+                  std::string str_index=to_string(i);
+                  std::string val_item=props.get_string("UI_ListBox_Item_"+str_index,"");
+                  if(val_item!=""){
+                     items.push_back(val_item);
+                  }
+              }
+              uint8_t color_count=2;
+              for(uint8_t i=0;i<color_count;i++){
+                 std::string str_index=to_string(i);
+                 uint16_t temp_color=0;
+                 std::vector<std::string> color_vect=Converter::str_toVect(props.get_string("UI_ListBox_Color_"+str_index,""));
+                 if(color_vect.size()>=4){
+                    uint8_t r=Converter::strTo_UInt(color_vect[0]);
+                    uint8_t g=Converter::strTo_UInt(color_vect[1]);
+                    uint8_t b=Converter::strTo_UInt(color_vect[2]);
+                    uint8_t a=Converter::strTo_UInt(color_vect[3]);
+                    temp_color=Converter::packRGBA4444(r,g,b,a);
+                 }
+                 if(i==0){
+                     bg_color=temp_color;
+                 }
+                 else{
+                    items_color=temp_color;
+                 }
+              }
+              sprite_icon=props.get_uint("UI_ListBox_Sprite_Icon",0xFFFF);
+              UI_sys.register_listBox(id_entity,bg_color,items_color,sprite_icon,items,max_showItems,items_height);
               break;
           }
            default:break;
@@ -506,6 +786,7 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
       }
    }
    header.has_text=has_text;
+   header.main_type=main_type;
    UI_sys.register_Header(id_entity,header);
 }
 

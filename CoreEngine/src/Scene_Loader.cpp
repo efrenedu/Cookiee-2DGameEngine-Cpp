@@ -441,6 +441,7 @@ bool Scene_Loader::LoadSceneXML(const char* filePath,Scene* target_scene,const c
     auto comps_info=GetComponentKeysNames();
     pugi::xml_node sceneNode = doc.child(root_name);
     uint16_t entities_count=0;
+
     //Read of Number of Components and Number of Objects
     pugi::xml_node comps_count_node=sceneNode.child(header_name);
     if(comps_count_node){

@@ -196,3 +196,17 @@ uint16_t textureManager_system::get_spriteby_grid(uint8_t text_id,uint16_t row,u
    Texture target=list_textures[text_id];
    return target.getId_fromGrid(row,column,number_columns);
 }
+
+//Get the Rect of Sprite
+SDL_Rect textureManager_system::get_RectSprite(uint16_t sprite_id){
+   SDL_Rect res={0,0,0,0};
+   if(sprite_id>=catalog.list_sprites.size()){
+       return res;
+   }
+   Sprite_Source src=catalog.list_sprites[sprite_id];
+   res.x=src.x;
+   res.y=src.y;
+   res.w=src.w;
+   res.h=src.h;
+   return res;
+}

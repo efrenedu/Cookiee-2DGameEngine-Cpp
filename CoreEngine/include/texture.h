@@ -55,7 +55,7 @@ struct textureManager_system{
     SDL_Texture* get_texture_fromSprite(SDL_Rect& rect_spr,uint16_t sprite_id);
     uint8_t get_textureId_fromNameSource(const char* src);
     uint16_t get_spriteby_grid(uint8_t text_id,uint16_t row,uint16_t column,uint16_t& number_columns);
-
+    SDL_Rect get_RectSprite(uint16_t sprite_id);
   private:
     std::vector<Texture> list_textures;
     std::vector<uint32_t> hash_textures;

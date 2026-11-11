@@ -190,7 +190,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
                      100,
                      false,
                      false,
-                     true
+                     RENDER_BORDER_ONLY
                  });
                  std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
                         return a.z_index<b.z_index;
@@ -211,7 +211,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
                      100,
                      false,
                      false,
-                     true
+                     RENDER_BORDER_ONLY
                  });
                  std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
                         return a.z_index<b.z_index;
@@ -277,7 +277,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
               render_dat->z_index,
               false,
               flipped,
-              false
+              RENDER_BORDER_NONE
           });
           std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
                  return a.z_index<b.z_index;
@@ -289,15 +289,18 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
 
         SDL_Texture* tex=cmd.tex_id;
         SDL_Rect rect_world=cmd.rect_world;
-        bool render_colliderborder=cmd.render_ColliderborderOnly;
+        bool render_border=cmd.render_border;
+        if(cmd.render_border!=RENDER_BORDER_NONE){
+           SDL_SetRenderDrawColor(main_render,255,255,255,255);
+           SDL_RenderDrawRect(main_render,&rect_world);
+           if(cmd.render_border==RENDER_BORDER_ONLY){
+              continue;
+           }
+        }
+
         if(tex==NULL){
             SDL_SetRenderDrawColor(main_render,255,255,255,255);
-            if(render_colliderborder){
-                SDL_RenderDrawRect(main_render,&rect_world);
-            }
-            else{
-                 SDL_RenderFillRect(main_render,&rect_world);
-            }
+            SDL_RenderFillRect(main_render,&rect_world);
             continue;
         }
         SDL_Rect rect_sprite=cmd.rect_sprite;
@@ -322,7 +325,13 @@ void Render_DrawSystem::draw_Particles(textureManager_system* texture_sys,Camera
 
         SDL_Texture* tex=cmd.tex_id;
         SDL_Rect rect_world=cmd.rect_world;
-        bool render_colliderborder=cmd.render_ColliderborderOnly;
+        if(cmd.render_border!=RENDER_BORDER_NONE){
+            SDL_SetRenderDrawColor(main_render,255,255,255,255);
+            SDL_RenderDrawRect(main_render,&rect_world);
+            if(cmd.render_border==RENDER_BORDER_ONLY){
+                continue;
+            }
+        }
         if(tex==NULL){
             uint8_t r,g,b,a;
             Converter::unpackRGBA4444(cmd.color,r,g,b,a);
@@ -356,6 +365,9 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
     Render_System* render_sys=target_scene->get_render_sys();
     UI_System* ui_sys=target_scene->get_UI_sys();
     Fonts_System* font_sys=target_scene->get_font_sys();
+    uint16_t w_view=0;
+    uint16_t h_view=0;
+
     for(uint16_t i=0;i<target_scene->get_count_entities();i++){
           std::bitset<64> mask_entity=target_scene->get_mask(i);
           if(HasComponentBit(mask_entity,UI_COMP)==false){
@@ -369,11 +381,19 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
           uint16_t width=32;
           uint16_t height=32;
           SDL_Rect rect;
+          SDL_Rect fg_rect;
           uint16_t color=0;
+          uint16_t fg_color=0;
           bool is_rendered=false;
           bool is_composer=false;
+          bool draw_bg=false;
+          bool draw_fg=false;
+          uint16_t bg_color=0;
+          uint16_t angle_sprite=0;
+          SDL_Rect bg_rect;
           uint8_t z_index=0;
-
+          bool can_draw_scrollbars=false;
+          SDL_Rect rect_container_scroll;
 
 
           if(HasComponentBit(mask_entity,RENDER_COMP)){
@@ -383,7 +403,11 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              is_composer=true;
           }
           SDL_Texture* tex=NULL;
+          SDL_Texture* fg_tex=NULL;
+          SDL_Texture* bg_tex=NULL;
           SDL_Rect rect_sprite;
+          SDL_Rect fg_sprite_rect;
+          SDL_Rect bg_sprite_rect;
           if(is_rendered){
              Render_data* render_dat=render_sys->get_render(i);
              if(render_dat->visible==false){
@@ -398,47 +422,395 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
             width=rect_sprite.w;
             height=rect_sprite.h;
           }
+          uint8_t border=RENDER_BORDER_NONE;
+          uint8_t bg_border=RENDER_BORDER_NONE;
+          uint16_t border_color=0;
           rect.w=width;
           rect.h=height;
-          if(is_composer){
-             draw_spriteComposer(target_scene,texture_sys,i,z_index,x,y,0,0,flipped);
-             continue;
-          }
 
           UI_header* header=ui_sys->get_UIHeader(i);
-          Button* btn=ui_sys->get_button(i);
+
           Label* lbl=ui_sys->get_label(i);
+          ScrollBar* scroll=ui_sys->get_scrollbar(i);
           bool use_color=false;
-          if(btn!=NULL){
-              color=btn->colors_states[btn->actual_state];
-              if(tex==NULL){
-                use_color=true;
-                rect.x=header->centerX-header->half_width;
-                rect.y=header->centerY-header->half_height;
-                rect.w=header->half_width*2;
-                rect.h=header->half_height*2;
-              }
+          bool ignore_ui=false;
+          switch(header->main_type){
+             case UI_BUTTON:{
+                Button* btn=ui_sys->get_button(i);
+                if(btn!=NULL){
+                   color=btn->colors_states[btn->actual_state];
+                   if(tex!=NULL){
+                      if(is_composer){
+                          SDL_Rect rect_composer;
+                          draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,header->centerX,header->centerY,rect_composer);
+                          ignore_ui=true;
+                          break;
+                      }
+                   }
+                   else{
+                     use_color=true;
+                     rect.x=header->centerX-header->half_width;
+                     rect.y=header->centerY-header->half_height;
+                     rect.w=header->half_width*2;
+                     rect.h=header->half_height*2;
+
+                  }
+                }
+                break;
+             }
+             case UI_PANEL:{
+                Panel* pnl=ui_sys->get_panel(i);
+                if(pnl!=NULL){
+                   can_draw_scrollbars=true;
+                   if(tex!=NULL && is_composer){
+                        SDL_Rect rect_composer;
+                        draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,header->centerX,header->centerY,rect_composer);
+                        rect_container_scroll=rect_composer;
+                        ignore_ui=true;
+                        break;
+                    }
+                    else{
+                      tex=NULL;
+                      use_color=true;
+                      color=pnl->bg_color;
+                      rect.x=header->centerX-header->half_width;
+                      rect.y=header->centerY-header->half_height;
+                      rect.w=header->half_width*2;
+                      rect.h=header->half_height*2;
+                      rect_container_scroll=rect;
+                      if(pnl->draw_border){
+                         border=RENDER_BORDER_ONLY;
+                         border_color=pnl->border_color;
+                      }
+                    }
+
+                }
+                break;
+             }
+             case UI_VALUEBAR:{
+               ValueBar* bar=ui_sys->get_valueBar(i);
+               if(bar!=NULL){
+                  bg_rect.x=rect.x;
+                  bg_rect.y=rect.y;
+                  bg_rect.w=bar->width_bar;
+                  bg_rect.h=bar->height_bar;
+                  rect.w=bar->width_bar;
+                  rect.h=bar->height_bar;
+                  bg_color=bar->bg_color;
+                  color=bar->bar_colors[bar->bar_state];
+                  use_color=true;
+                  draw_bg=true;
+                  if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
+                     rect.w=bar->value*bar->width_bar;
+                  }
+                  else{
+                     rect.h=bar->value*bar->height_bar;
+                  }
+                  tex=NULL;
+                  if(bar->use_bar_colors){
+                    if(bar->border_val>0){
+                        bg_border=RENDER_BORDER_APPEND;
+                        bg_rect.x-=bar->border_val;
+                        bg_rect.y-=bar->border_val;
+                        bg_rect.w+=bar->border_val*2;
+                        bg_rect.h+=bar->border_val*2;
+
+                     }
+                  }
+                  else{
+                     draw_bg=false;
+                     use_color=false;
+                     draw_Valuebar_Sprites(bg_rect,rect,texture_sys,z_index,bar,ui_sys);
+                  }
+               }
+               break;
+             }
+             case UI_SLIDER:{
+               Slider* slider=ui_sys->get_slider(i);
+               if(slider!=NULL){
+                  bg_rect.x=rect.x;
+                  bg_rect.y=rect.y;
+                  bg_rect.w=slider->max_w;
+                  bg_rect.h=slider->max_h;
+                  rect.w=bg_rect.w;
+                  rect.h=bg_rect.h;
+                  bg_color=slider->bg_color;
+                  color=slider->bar_color;
+                  fg_color=slider->slider_color;
+                  use_color=true;
+                  draw_bg=true;
+                  draw_fg=true;
+                  fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,slider->slider_sprite);
+                  float min_size=std::min(bg_rect.w,bg_rect.h);
+                  fg_rect.w=min_size;
+                  fg_rect.h=min_size;
+                  fg_rect.x=rect.x;
+                  fg_rect.y=rect.y;
+                  if(slider->orientation==UI_ORIENTATION_HORIZONTAL){
+                     rect.w=slider->value*slider->max_w;
+                     fg_rect.x=(rect.x+rect.w)-fg_rect.w;
+                     float porcent_increment=0.2;
+                     uint16_t offset_y=fg_rect.h*porcent_increment;
+                     fg_rect.h+=offset_y*2;
+                     fg_rect.y-=offset_y;
+                  }
+                  else{
+                     rect.h=slider->value*slider->max_h;
+                     fg_rect.y=(rect.y+rect.w)-fg_rect.w;
+                     float porcent_increment=0.2;
+                     uint16_t offset_x=fg_rect.w*porcent_increment;
+                     fg_rect.w+=offset_x*2;
+                     fg_rect.x-=offset_x;
+                  }
+               }
+                break;
+             }
+             case UI_CHECKBUTTON:{
+                CheckButton* check=ui_sys->get_checkBtn(i);
+                if(check!=NULL){
+                     if(tex==NULL){
+                        use_color=true;
+                        draw_bg=true;
+                        rect.w=header->half_width*2;
+                        rect.h=header->half_height*2;
+                        bg_color=check->bg_color;
+                        color=0;
+                        bg_rect.x=rect.x;
+                        bg_rect.y=rect.y;
+                        bg_rect.w=rect.w;
+                        bg_rect.h=rect.h;
+                        if(check->state==OPTION_DISABLED){
+                             color=check->disabled_color;
+                             bg_color=check->disabled_color;
+                        }
+                        else if(check->state==OPTION_CHECKED){
+                              color=check->button_color;
+                              float reduce_factor=0.125;
+                              uint16_t w_reduce=rect.w*reduce_factor;
+                              uint16_t h_reduce=rect.h*reduce_factor;
+                              rect.w-=w_reduce*2;
+                              rect.h-=h_reduce*2;
+                              rect.x+=w_reduce;
+                              rect.y+=h_reduce;
+
+                        }
+
+                     }
+                }
+                break;
+             }
+             case UI_RADIOBUTTON:{
+                Radio_Button* btn=ui_sys->get_radioBtn(i);
+                if(btn!=NULL){
+                     if(tex==NULL){
+                        use_color=true;
+                        draw_bg=true;
+                        rect.w=header->half_width*2;
+                        rect.h=header->half_height*2;
+                        bg_color=btn->bg_color;
+                        color=0;
+                        bg_rect.x=rect.x;
+                        bg_rect.y=rect.y;
+                        bg_rect.w=rect.w;
+                        bg_rect.h=rect.h;
+                        if(btn->state==OPTION_DISABLED){
+                             color=btn->disabled_color;
+                             bg_color=btn->disabled_color;
+                        }
+                        else if(btn->state==OPTION_CHECKED){
+                              color=btn->button_color;
+                              float reduce_factor=0.125;
+                              uint16_t w_reduce=rect.w*reduce_factor;
+                              uint16_t h_reduce=rect.h*reduce_factor;
+                              rect.w-=w_reduce*2;
+                              rect.h-=h_reduce*2;
+                              rect.x+=w_reduce;
+                              rect.y+=h_reduce;
+
+                        }
+
+                     }
+                }
+                break;
+             }
+             case UI_ICON:{
+                if(tex!=NULL && is_composer){
+                    SDL_Rect ref_rect;
+                    draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,header->centerX,header->centerY,ref_rect);
+                    ignore_ui=true;
+                }
+                if(tex==NULL){
+                    use_color=true;
+                    color=0xFFFF;
+                }
+             }
+             case UI_TEXTFIELD:{
+                 break;
+             }
+             case UI_COMBOBOX:{
+                ComboBox* box=ui_sys->get_comboBox(i);
+                if(box!=NULL){
+                    draw_bg=true;
+                    use_color=true;
+                    draw_fg=true;
+                    bg_rect.x=rect.x;
+                    bg_rect.y=rect.y;
+                    bg_rect.w=box->width_box;
+                    color=box->itemHover_color;
+                    uint16_t sz_btn=box->min_height*box->porceSize_btn;
+
+                    if(box->open==false){
+                        bg_rect.h=box->min_height;
+                        color=0;
+                    }
+                    else{
+                        can_draw_scrollbars=true;
+                        bg_rect.h=box->max_height;
+                        if(box->selected_item==-1){
+                             color=0;
+                        }
+                        else{
+                           rect.h=box->min_height;
+                           rect.w=box->width_box;
+                           rect.y=bg_rect.y+((box->selected_item-box->offset_items)*box->min_height);
+                           color=box->itemHover_color;
+                        }
+                        rect_container_scroll=bg_rect;
+                        rect_container_scroll.y+=box->min_height;
+                        rect_container_scroll.h-=box->max_height;
+                    }
+
+                    rect.w=box->width_box;
+                    rect.h=box->min_height;
+                    fg_rect.w=sz_btn;
+                    fg_rect.h=sz_btn;
+                    fg_rect.x=(bg_rect.x+bg_rect.w)-sz_btn;
+                    fg_rect.y=bg_rect.y;
+                    fg_color=box->color_btn;
+                    bg_color=box->bg_color;
+                    fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,box->sprite_btn);
+
+                }
+                break;
+             }
+             case UI_LIST:{
+                List_Box* list_bx=ui_sys->get_list_box(i);
+                if(list_bx!=NULL){
+                     rect.h=header->half_height*2;
+                     rect.w=header->half_width*2;
+                     can_draw_scrollbars=true;
+                     if(is_composer){
+                        draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,header->centerX,header->centerY,rect_container_scroll);
+                     }
+                     else{
+                         bg_rect.x=rect.x;
+                         bg_rect.y=rect.y;
+                         bg_rect.h=rect.h;
+                         bg_rect.w=rect.w;
+                         rect_container_scroll.x=bg_rect.x;
+                         rect_container_scroll.y=bg_rect.y;
+                         rect_container_scroll.w=bg_rect.h;
+                         rect_container_scroll.w=bg_rect.w;
+
+                         draw_bg=true;
+                         bg_color=list_bx->bg_color;
+                     }
+                     rect.h=list_bx->heigth_items;
+                     rect.y=bg_rect.y+((list_bx->selected_item-list_bx->offset)*rect.h);
+                     color=list_bx->item_color;
+                     use_color=true;
+                     fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,list_bx->icon_sprite);
+                     if(fg_tex!=NULL){
+                         draw_fg=true;
+                         fg_rect.x=rect.x-fg_sprite_rect.w;
+                         fg_rect.y=rect.y;
+                         fg_rect.w=fg_sprite_rect.w;
+                         fg_rect.h=fg_sprite_rect.h;
+                     }
+                }
+                break;
+             }
+             default:break;
+
           }
+
 
           SDL_Point point_pivot;
           point_pivot.x=rect_sprite.w*0.5;
           point_pivot.y=rect_sprite.h*0.5;
-          render_queue.push_back({
-              tex,
-              rect,
-              rect_sprite,
-              color,
-              point_pivot,
-              0,
-              z_index,
-              use_color,
-              flipped,
-              false
-          });
-          std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
-                 return a.z_index<b.z_index;
-          });
 
+          if(ignore_ui==false){
+                if(draw_bg){
+                   SDL_Point bg_point;
+                   bg_point.x=bg_sprite_rect.w*0.5;
+                   bg_point.y=bg_sprite_rect.h*0.5;
+                   bool use_bg_color=true;
+                   if(bg_tex!=NULL){
+                      use_bg_color=false;
+                   }
+                   RenderCommand cmd_bg;
+                   cmd_bg.rect_world=bg_rect;
+                   cmd_bg.z_index=z_index-1;
+                   cmd_bg.use_color=use_bg_color;
+                   cmd_bg.color=bg_color;
+                   cmd_bg.flipped=false;
+                   cmd_bg.pivot=bg_point;
+                   cmd_bg.angle=0;
+                   cmd_bg.rect_sprite=bg_sprite_rect;
+                   cmd_bg.render_border=bg_border;
+                   cmd_bg.tex_id=bg_tex;
+                   render_queue.push_back(cmd_bg);
+                }
+                if(draw_fg){
+                   bool use_fg_color=true;
+                   if(fg_tex!=NULL){
+                      use_fg_color=false;
+                   }
+                   SDL_Point fg_point;
+                   fg_point.x=fg_sprite_rect.w*0.5;
+                   fg_point.y=fg_sprite_rect.h*0.5;
+
+                   RenderCommand cmd_fg;
+                   cmd_fg.rect_world=fg_rect;
+                   cmd_fg.z_index=z_index+1;
+                   cmd_fg.use_color=use_fg_color;
+                   cmd_fg.color=fg_color;
+                   cmd_fg.flipped=false;
+                   cmd_fg.pivot=fg_point;
+                   cmd_fg.angle=0;
+                   cmd_fg.rect_sprite=fg_sprite_rect;
+                   cmd_fg.render_border=RENDER_BORDER_NONE;
+                   cmd_fg.tex_id=fg_tex;
+                   render_queue.push_back(cmd_fg);
+                }
+                RenderCommand cmd_ui;
+                cmd_ui.tex_id=tex;
+                cmd_ui.rect_world=rect;
+                cmd_ui.rect_sprite=rect_sprite;
+                cmd_ui.color=color;
+                cmd_ui.angle=angle_sprite;
+                cmd_ui.z_index=z_index;
+                cmd_ui.pivot=point_pivot;
+                cmd_ui.use_color=use_color;
+                cmd_ui.render_border=RENDER_BORDER_NONE;
+                cmd_ui.flipped=flipped;
+                render_queue.push_back(cmd_ui);
+
+                if(border!=RENDER_BORDER_NONE){
+                    RenderCommand cmd;
+                    cmd.tex_id=NULL;
+                    cmd.rect_world=rect;
+                    cmd.color=border_color;
+                    cmd.render_border=border;
+                    cmd.z_index=z_index+1;
+                    render_queue.push_back(cmd);
+               }
+          }
+          //Draw Scrollbar of Components
+          if(can_draw_scrollbars==true &&scroll!=NULL ){
+              draw_scrollBar(scroll,texture_sys,rect_container_scroll,z_index);
+
+          }
           //draw Text Only if has Texture
           if(lbl!=NULL ){
 
@@ -464,19 +836,17 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              lbl_command.angle=0;
              lbl_command.flipped=false;
              lbl_command.pivot=point_pivot;
-             lbl_command.render_ColliderborderOnly=false;
+             lbl_command.render_border=RENDER_BORDER_NONE;
              lbl_command.use_color=true;
              lbl_command.color=color_lbl;
              lbl_command.rect_world=rect_lbl;
              lbl_command.rect_sprite=rect_font;
              lbl_command.tex_id=text_texture;
-
              render_queue.push_back(lbl_command);
-             std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
-                 return a.z_index<b.z_index;
-             });
           }
-
+          std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
+             return a.z_index<b.z_index;
+          });
 
     }
 
@@ -484,21 +854,26 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
 
         SDL_Texture* tex=cmd.tex_id;
         SDL_Rect rect_world=cmd.rect_world;
-        bool render_colliderborder=cmd.render_ColliderborderOnly;
+        if(cmd.render_border!=RENDER_BORDER_NONE){
+            uint8_t r,g,b,a;
+            Converter::unpackRGBA4444(cmd.color,r,g,b,a);
+            SDL_SetRenderDrawColor(main_render,r,g,b,a);
+            SDL_RenderDrawRect(main_render,&rect_world);
+            if(cmd.render_border==RENDER_BORDER_ONLY){
+                 continue;
+            }
 
+        }
         if(tex==NULL && cmd.use_color){
             uint8_t r,g,b,a;
             Converter::unpackRGBA4444(cmd.color,r,g,b,a);
-            SDL_Color color;
-            color.r=r;
-            color.g=g;
-            color.b=b;
-            color.a=a;
-            SDL_SetRenderDrawColor(main_render,color.r,color.g,color.b,color.a);
+            SDL_SetRenderDrawColor(main_render,r,g,b,a);
             SDL_RenderFillRect(main_render,&rect_world);
             continue;
         }
-
+        if(tex==NULL){
+             continue;
+        }
         SDL_Rect rect_sprite=cmd.rect_sprite;
         SDL_Point pivot=cmd.pivot;
         uint16_t angle=cmd.angle;
@@ -512,13 +887,20 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
             uint8_t r,g,b,a;
             Converter::unpackRGBA4444(cmd.color,r,g,b,a);
             SDL_SetTextureColorMod(tex,r,g,b);
+            SDL_RenderCopyEx(main_render,tex,&rect_sprite,&rect_world,static_cast<double>(angle),&pivot,flip_val);
+            SDL_SetTextureColorMod(tex,255,255,255);
+
         }
-        SDL_RenderCopyEx(main_render,tex,&rect_sprite,&rect_world,static_cast<double>(angle),&pivot,flip_val);
+        else{
+            SDL_RenderCopyEx(main_render,tex,&rect_sprite,&rect_world,static_cast<double>(angle),&pivot,flip_val);
+        }
+
     }
     render_queue.clear();
 }
 
 
+//Draw a Text
 SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_Rect& rect,Bitmap_Font* target_font){
    if(font_sys==NULL || lbl==NULL || target_font==NULL ){
       return NULL;
@@ -620,8 +1002,282 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
 
 }
 
+
+//Draw a ValueBar Sprites
+bool Render_DrawSystem::draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect,textureManager_system* texture_sys,int8_t z_index,ValueBar* bar,UI_System* ui_sys){
+     if(bar==NULL || texture_sys==NULL){
+          return false;
+     }
+
+     //get the main texture and reference Sprite Rect for Bar Sprites
+     SDL_Rect ref_rect;
+     SDL_Texture* main_tex= texture_sys->get_texture_fromSprite(ref_rect,bar->bar_sprites[VALUEBAR_STATE_COMPLETE]);
+     if(main_tex==NULL){
+         return false;
+     }
+     SDL_Rect extremeBg_left_rect=texture_sys->get_RectSprite(bar->bg_sprites[0]);
+     SDL_Rect centerBg_rect=texture_sys->get_RectSprite(bar->bg_sprites[1]);
+     uint16_t actual_pos=0;
+     uint16_t end_pos=0;
+     uint16_t end_bg=0;
+     uint16_t target_size=0;
+     bool bar_finished=false;
+     if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
+         actual_pos=bar_rect.x;
+         end_pos=bar_rect.x+bar_rect.w;
+         target_size=ref_rect.w;
+         end_bg=bg_rect.x+bg_rect.w;
+
+     }
+     else{
+        actual_pos=bar_rect.y;
+        end_pos=bar_rect.y+bar_rect.h;
+        target_size=ref_rect.h;
+        end_bg=bg_rect.y+bg_rect.h;
+     }
+     if(extremeBg_left_rect.w!=0 && extremeBg_left_rect.h!=0){
+         SDL_Rect rect_left;
+         SDL_Point point_left;
+         rect_left.w=extremeBg_left_rect.w;
+         rect_left.h=extremeBg_left_rect.h;
+         if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
+            rect_left.x=bg_rect.x-rect_left.w;
+            rect_left.y=bg_rect.y;
+
+         }
+         else{
+            rect_left.x=bg_rect.x;
+            rect_left.y=bg_rect.y-rect_left.h;
+         }
+         point_left.x=extremeBg_left_rect.w*0.5;
+         point_left.y=extremeBg_left_rect.h*0.5;
+         RenderCommand cmd_leftBg;
+         cmd_leftBg.angle=0;
+         cmd_leftBg.flipped=false;
+         cmd_leftBg.tex_id=main_tex;
+         cmd_leftBg.rect_sprite=extremeBg_left_rect;
+         cmd_leftBg.rect_world=rect_left;
+         cmd_leftBg.render_border=RENDER_BORDER_NONE;
+         cmd_leftBg.z_index=z_index-1;
+         cmd_leftBg.pivot=point_left;
+         cmd_leftBg.use_color=false;
+         render_queue.push_back(cmd_leftBg);
+     }
+     SDL_Texture* new_bar_tex=NULL;
+     SDL_Rect rect_tex={0,0,bar->max_width,bar->max_height};
+     SDL_Rect rect_world={bar_rect.x,bar_rect.y,bar->max_width,bar->max_height};
+
+     Rendered_ValueBars* last_barRendered=ui_sys->get_saved_valueBar_texture(bar->saved_texture);
+     SDL_Texture* initial_texture=SDL_GetRenderTarget(main_render);
+     bool require_redraw=true;
+     bool require_save=false;
+     if(last_barRendered!=NULL){
+         new_bar_tex=last_barRendered->tex;
+     }
+     if(new_bar_tex!=NULL && bar->last_value==bar->value){
+           actual_pos=end_bg;
+           require_redraw=false;
+     }
+     bar->last_value=bar->value;
+     if(new_bar_tex==NULL){
+        require_save=true;
+        new_bar_tex=SDL_CreateTexture(main_render,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,bar->max_width,bar->max_height);
+        SDL_SetTextureBlendMode(new_bar_tex,SDL_BLENDMODE_BLEND);
+     }
+
+     SDL_SetRenderTarget(main_render,new_bar_tex);
+     if(require_redraw){
+          SDL_SetRenderDrawColor(main_render,0,0,0,0);
+          SDL_RenderClear(main_render);
+     }
+     while(actual_pos<end_bg){
+         SDL_Rect target_rect;
+         SDL_Rect bg_target_rect;
+         uint16_t limit_posSprite=0;
+         if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
+            limit_posSprite=actual_pos+ref_rect.w;
+            target_rect.x=actual_pos-bar_rect.x;
+            target_rect.y=0;
+            target_rect.w=ref_rect.w;
+            target_rect.h=ref_rect.h;
+            bg_target_rect.x=actual_pos-bg_rect.x;
+            bg_target_rect.y=0;
+            bg_target_rect.w=centerBg_rect.w;
+            bg_target_rect.h=centerBg_rect.h;
+         }
+         else{
+            limit_posSprite=actual_pos+ref_rect.h;
+            target_rect.x=0;
+            target_rect.y=actual_pos-bar_rect.y;
+            target_rect.w=ref_rect.w;
+            target_rect.h=ref_rect.h;
+            bg_target_rect.x=0;
+            bg_target_rect.y=actual_pos-bg_rect.y;
+            bg_target_rect.w=centerBg_rect.w;
+            bg_target_rect.h=centerBg_rect.h;
+         }
+         uint16_t target_sprite=0xFFFF;
+         if(centerBg_rect.w!=0 && centerBg_rect.h!=0){
+            SDL_RenderCopy(main_render,main_tex,&centerBg_rect,&bg_target_rect);
+         }
+
+         if(actual_pos>=end_pos){
+            bar_finished=true;
+         }
+         if(bar_finished==false){
+
+             uint16_t dif_end=limit_posSprite-end_pos;
+             if(dif_end>0){
+                float out_porcent=(float)dif_end/(float)target_size;
+                if(out_porcent>=0.3){
+                     target_sprite=bar->bar_sprites[VALUEBAR_STATE_MEDIUM];
+                }
+                else if(out_porcent>=0.7){
+                   target_sprite=bar->bar_sprites[VALUEBAR_STATE_LOW];
+                 }
+             }
+         }
+
+         SDL_Rect rect_sprite=texture_sys->get_RectSprite(target_sprite);
+         actual_pos+=target_size;
+         if(rect_sprite.w==0 && rect_sprite.h==0){
+            continue;
+         }
+
+         SDL_RenderCopy(main_render,main_tex,&rect_sprite,&target_rect);
+     }
+
+     SDL_SetRenderTarget(main_render,initial_texture);
+     SDL_Point pt;
+     pt.x=rect_tex.x*0.5;
+     pt.y=rect_tex.y*0.5;
+     RenderCommand cmd;
+     cmd.angle=0;
+     cmd.flipped=false;
+     cmd.rect_sprite=rect_tex;
+     cmd.rect_world=rect_world;
+     cmd.use_color=false;
+     cmd.z_index=z_index;
+     cmd.pivot=pt;
+     cmd.tex_id=new_bar_tex;
+     render_queue.push_back(cmd);
+
+     if(new_bar_tex!=NULL &&require_save){
+          bar->saved_texture=ui_sys->save_valueBar_texture(new_bar_tex,rect_tex,rect_world);
+
+     }
+     SDL_Rect extremeBg_right_rect=texture_sys->get_RectSprite(bar->bg_sprites[2]);
+     if(extremeBg_right_rect.w!=0 && extremeBg_right_rect.h!=0){
+         SDL_Rect rect_right;
+         rect_right.w=extremeBg_right_rect.w;
+         rect_right.h=extremeBg_right_rect.h;
+         if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
+            rect_right.x=actual_pos;
+            rect_right.y=bg_rect.y;
+
+         }
+         else{
+            rect_right.x=bg_rect.x;
+            rect_right.y=actual_pos;
+         }
+         SDL_Point point_left;
+         point_left.x=extremeBg_right_rect.w*0.5;
+         point_left.y=extremeBg_right_rect.h*0.5;
+         RenderCommand cmd_righBg;
+         cmd_righBg.angle=0;
+         cmd_righBg.flipped=false;
+         cmd_righBg.tex_id=main_tex;
+         cmd_righBg.rect_sprite=extremeBg_right_rect;
+         cmd_righBg.rect_world=rect_right;
+         cmd_righBg.render_border=RENDER_BORDER_NONE;
+         cmd_righBg.z_index=z_index-1;
+         cmd_righBg.pivot=point_left;
+         cmd_righBg.use_color=false;
+         render_queue.push_back(cmd_righBg);
+     }
+     return true;
+}
+
+//Draw a ScrollBar
+void Render_DrawSystem::draw_scrollBar(ScrollBar* scroll,textureManager_system* texture_sys,SDL_Rect rect_container,int8_t z_index){
+     SDL_Rect rect_scroll;
+     SDL_Rect rect_bar;
+     SDL_Rect left_btn;
+     SDL_Rect right_btn;
+     uint16_t sz_btns=scroll->size_buttons;
+     left_btn.w=sz_btns;
+     left_btn.h=sz_btns;
+     right_btn.w=sz_btns;
+     right_btn.h=sz_btns;
+     rect_scroll.w=scroll->max_width_Bg;
+     rect_scroll.h=scroll->max_height_bg;
+     rect_bar.w=scroll->width_bar;
+     rect_bar.h=scroll->height_bar;
+     if(scroll->orientation==UI_ORIENTATION_HORIZONTAL){
+         rect_scroll.x=rect_container.x;
+         rect_scroll.y=(rect_container.y+rect_container.h)-rect_scroll.h;
+         rect_bar.y=rect_scroll.y;
+         rect_bar.x=rect_scroll.x+(scroll->desplacement*(rect_scroll.w-rect_bar.w));
+         right_btn.x=(rect_scroll.x+rect_scroll.w)-sz_btns;
+         right_btn.y=rect_scroll.y;
+     }
+     else{
+         rect_scroll.x=(rect_container.x+rect_container.w)-rect_scroll.w;
+         rect_scroll.y=rect_container.y;
+         rect_bar.y=rect_scroll.y+(scroll->desplacement*(rect_scroll.h-rect_bar.h));
+         rect_bar.x=rect_scroll.x;
+         right_btn.x=rect_scroll.x;
+         right_btn.y=(rect_scroll.y+rect_scroll.h)-sz_btns;
+     }
+     left_btn.x=rect_scroll.x;
+     left_btn.y=rect_scroll.y;
+     RenderCommand cmd_scroll,cmd_bar,cmd_left_btn,cmd_right_btn;
+     cmd_scroll.tex_id=NULL;
+     cmd_scroll.color=scroll->bg_color;
+     cmd_scroll.rect_world=rect_scroll;
+     cmd_scroll.z_index=z_index+1;
+     cmd_scroll.use_color=true;
+     cmd_scroll.render_border=RENDER_BORDER_NONE;
+     cmd_bar.tex_id=NULL;
+     cmd_bar.color=scroll->bar_colors[scroll->actual_state];
+     cmd_bar.rect_world=rect_bar;
+     cmd_bar.z_index=z_index+2;
+     cmd_bar.use_color=true;
+     cmd_bar.render_border=RENDER_BORDER_NONE;
+
+     bool use_color=true;
+     SDL_Rect rect_sprite_btns;
+     SDL_Texture* tex_btns=texture_sys->get_texture_fromSprite(rect_sprite_btns,scroll->btns_sprite);
+     if(tex_btns!=NULL){
+        use_color=false;
+     }
+     cmd_left_btn.tex_id=tex_btns;
+     cmd_left_btn.rect_sprite=rect_sprite_btns;
+     cmd_left_btn.angle=0;
+     cmd_left_btn.flipped=false;
+     cmd_left_btn.color=scroll->buttons_color;
+     cmd_left_btn.rect_world=left_btn;
+     cmd_left_btn.z_index=z_index+3;
+     cmd_left_btn.use_color=use_color;
+     cmd_left_btn.render_border=RENDER_BORDER_NONE;
+
+     cmd_right_btn.angle=0;
+     cmd_right_btn.flipped=false;
+     cmd_right_btn.tex_id=tex_btns;
+     cmd_right_btn.rect_sprite=rect_sprite_btns;
+     cmd_right_btn.color=scroll->buttons_color;
+     cmd_right_btn.rect_world=right_btn;
+     cmd_right_btn.z_index=z_index+3;
+     cmd_right_btn.use_color=use_color;
+     cmd_right_btn.render_border=RENDER_BORDER_NONE;
+     render_queue.push_back(cmd_scroll);
+     render_queue.push_back(cmd_bar);
+     render_queue.push_back(cmd_left_btn);
+     render_queue.push_back(cmd_right_btn);
+
+}
 //Draw the Sprite Composer
-void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,uint8_t z_index,float centerX,float centerY,float angle,float initial_angle,bool flipped){
+void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,int8_t z_index,float centerX,float centerY,float angle,float initial_angle,bool flipped){
   if(target_scene==NULL){
        return;
   }
@@ -645,15 +1301,22 @@ void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_
   float rad=Math_G::to_rad(total_angle);
   float sin=Math_G::Sin(Math_G::to_rad(total_angle));
   float cos=Math_G::Cos(Math_G::to_rad(total_angle));
+  SDL_Texture* main_tex=NULL;
   for(SpriteComposer_Item sprite:composer_spr->sprites){
       float offsetx=sprite.offsetX;
       float offsety=sprite.offsetY;
       uint16_t index_sprite=sprite.id_sprite;
       SDL_Rect rect_sprite;
-      SDL_Texture* tex=texture_sys->get_texture_fromSprite(rect_sprite,index_sprite);
-      if(tex==NULL){
-         continue;
+      if(main_tex==NULL){
+          main_tex=texture_sys->get_texture_fromSprite(rect_sprite,index_sprite);
+          if(main_tex==NULL){
+             continue;
+          }
       }
+      else{
+          rect_sprite=texture_sys->get_RectSprite(index_sprite);
+      }
+
       SDL_Rect rect_obj;
       float rotatedOffsetX=(offsetx*cos)-(offsety*sin);
       float rotatedOffsetY=(offsetx*sin)+(offsety*cos);
@@ -667,7 +1330,7 @@ void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_
       point_pivot.y=rect_sprite.h*0.5;
       uint16_t color=0;
       render_queue.push_back({
-        tex,
+        main_tex,
         rect_obj,
         rect_sprite,
         color,
@@ -676,7 +1339,7 @@ void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_
         z_index,
         false,
         flipped,
-        false
+        RENDER_BORDER_NONE
        });
        std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
             return a.z_index<b.z_index;
@@ -685,6 +1348,59 @@ void Render_DrawSystem:: draw_spriteComposer(Scene* target_scene,textureManager_
 
 }
 
+//Draw a UI with Sprite Composer
+void Render_DrawSystem::draw_UiSpriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,int8_t z_index,float centerX,float centerY,SDL_Rect& rect_composer){
+   if(target_scene==NULL){
+       return;
+  }
+  SpriteComposer_System* composer_sys=target_scene->get_SpriteComposer_sys();
+  if(composer_sys==NULL){
+     return;
+  }
+  SpriteComposer_Data* composer_spr=composer_sys->get_spriteComposer(index_entity);
+  if(composer_spr==NULL){
+      return;
+  }
+  SDL_Texture* main_tex=NULL;
+ for(SpriteComposer_Item sprite:composer_spr->sprites){
+      float offsetx=sprite.offsetX;
+      float offsety=sprite.offsetY;
+      uint16_t index_sprite=sprite.id_sprite;
+      SDL_Rect rect_sprite;
+      if(main_tex==NULL){
+         main_tex=texture_sys->get_texture_fromSprite(rect_sprite,index_sprite);
+         if(main_tex==NULL){
+             continue;
+         }
+      }
+      else{
+           rect_sprite=texture_sys->get_RectSprite(index_sprite);
+      }
+
+      SDL_Rect rect_obj;
+      rect_obj.w=rect_sprite.w;
+      rect_obj.h=rect_sprite.h;
+      rect_obj.x=(centerX+offsetx)-(rect_sprite.w*0.5);
+      rect_obj.y=(centerY+offsety)-(rect_sprite.h*0.5);
+      SDL_Point point_pivot;
+      point_pivot.x=rect_sprite.w*0.5;
+      point_pivot.y=rect_sprite.h*0.5;
+      uint16_t color=0;
+      render_queue.push_back({
+        main_tex,
+        rect_obj,
+        rect_sprite,
+        color,
+        point_pivot,
+        0,
+        z_index,
+        false,
+        false,
+        RENDER_BORDER_NONE
+       });
+  }
+
+}
 
 //Draw the Tilemap
 void  Render_DrawSystem::draw_tilemap(textureManager_system* texture_sys,System_TileMap* tilemap,Camera2D* cam){
