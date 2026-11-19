@@ -8,7 +8,7 @@
 		<Build>
 			<Target title="Debug">
 				<Option output="bin/Debug/testGame" prefix_auto="1" extension_auto="1" />
-				<Option working_dir="../Game_Engine" />
+				<Option working_dir="./" />
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
@@ -18,6 +18,7 @@
 					<Add option="-m32" />
 					<Add option="-g" />
 					<Add directory="include" />
+					<Add directory="CoreEngine/include" />
 				</Compiler>
 				<Linker>
 					<Add option="-O2" />
@@ -33,6 +34,7 @@
 				<Compiler>
 					<Add option="-O2" />
 					<Add directory="include" />
+					<Add directory="CoreEngine/include" />
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
@@ -166,6 +168,7 @@
 		<Unit filename="include/Camera.h" />
 		<Unit filename="include/Component.h" />
 		<Unit filename="include/Converter.h" />
+		<Unit filename="include/EngineContext.h" />
 		<Unit filename="include/Fonts.h" />
 		<Unit filename="include/Game_Config.h" />
 		<Unit filename="include/Input.h" />
@@ -184,6 +187,7 @@
 		<Unit filename="include/Timer.h" />
 		<Unit filename="include/Transform_System.h" />
 		<Unit filename="include/UI_System.h" />
+		<Unit filename="include/UI_event.h" />
 		<Unit filename="include/hash_support.h" />
 		<Unit filename="include/json.hpp" />
 		<Unit filename="include/math_structs.h" />
@@ -198,6 +202,7 @@
 		<Unit filename="src/Audio_System.cpp" />
 		<Unit filename="src/Camera.cpp" />
 		<Unit filename="src/Converter.cpp" />
+		<Unit filename="src/EngineContext.cpp" />
 		<Unit filename="src/Fonts.cpp" />
 		<Unit filename="src/Game_Config.cpp" />
 		<Unit filename="src/Input.cpp" />
@@ -216,6 +221,7 @@
 		<Unit filename="src/Timer.cpp" />
 		<Unit filename="src/Transform_System.cpp" />
 		<Unit filename="src/UI_System.cpp" />
+		<Unit filename="src/UI_event.cpp" />
 		<Unit filename="src/math_structs.cpp" />
 		<Unit filename="src/miniaudio.c">
 			<Option compilerVar="CC" />

@@ -785,12 +785,21 @@ void Physic_Engine_System::change_gravityDir(float x_grav,float y_grav,float gra
 }
 
 //Make a RayCast and Return a RayCast Hit
-RayCastHit Physic_Engine_System::RayCast(float x ,float y ,float dir_x,float dir_y,float magnitude){
+RayCastHit Physic_Engine_System::RayCast(float x ,float y ,float dir_x,float dir_y,float magnitude,uint16_t bits_raycast,float last_x,float last_y,bool autocalled){
    RayCastHit res;
-   x=Converter::pixelToMetter(x);
-   y=Converter::pixelToMetter(y);
    res.hit=false;
    res.hit_entity=0;
+   if(autocalled){
+       if(last_x==x && last_y==y){
+          return res;
+      }
+   }
+   else{
+     magnitude=Converter::pixelToMetter(magnitude);
+     x=Converter::pixelToMetter(x);
+     y=Converter::pixelToMetter(y);
+
+   }
    RaycastDetection callback=RaycastDetection();
    b2Vec2 p1(x,y);
    b2Vec2 p2 (x+(dir_x*magnitude),y+(dir_y*magnitude));
@@ -799,18 +808,39 @@ RayCastHit Physic_Engine_System::RayCast(float x ,float y ,float dir_x,float dir
       b2Vec2 norm=callback.hit_normal;
       b2Vec2 point=callback.hit_point;
       b2Fixture* fixture=callback.hit_fixture;
+      if(fixture==NULL){
+         return res;
+      }
+      b2Body* bd=fixture->GetBody();
+      b2Filter filter=fixture->GetFilterData();
+      if((bits_raycast & filter.maskBits)==0){
+          //Hit with Invalid Fixture , Re Build Raycast from Center of Body hit
+          b2Vec2 center=bd->GetPosition();
+          b2Vec2 dif=p1-center;
+          float mag_dif=dif.LengthSquared();
+          if(mag_dif<=0.01){
+             //Hit Body Its at the Same Position of Raycast Init
+             return res;
+          }
+          float next_x=p1.x+(dir_x*mag_dif);
+          float next_y=p1.y+(dir_y*mag_dif);
+          if((next_x*dir_x)>(p2.x*dir_x) || (next_y*dir_y)>(p2.y*dir_y)){
+              //Target Position pass the Extreme of Raycast
+              return res;
+          }
+          dif=p2-b2Vec2(next_x,next_y);
+          float next_mag=dif.LengthSquared();
+          return RayCast(next_x,next_y,dir_x,dir_y,next_mag,bits_raycast,x,y,true);
+      }
       res.hit=true;
       res.normal=norm;
       b2Vec2 pt(Converter::MetterToPixel(point.x),Converter::MetterToPixel(point.y));
       res.hit_point=pt;
-
-      if(fixture!=NULL){
-        b2Body* bd=fixture->GetBody();
-        if(bd!=NULL){
-            uint16_t entity=static_cast<uint16_t>(bd->GetUserData().pointer);
-            res.hit_entity=entity;
-        }
+      if(bd!=NULL){
+         uint16_t entity=static_cast<uint16_t>(bd->GetUserData().pointer);
+         res.hit_entity=entity;
       }
+
    }
    return res;
 }

@@ -55,7 +55,7 @@ struct Physic_Engine_System{
       void clear_world();
       void update(Scene* target_scene);
       void update_world(float dt,Scene* target_scene);
-      RayCastHit RayCast(float x ,float y ,float dir_x,float dir_y,float magnitude);
+      RayCastHit RayCast(float x ,float y ,float dir_x,float dir_y,float magnitude,uint16_t bits_raycast=0xFFFF,float last_x=0,float last_y=0,bool autocalled=false);
       void add_CollisionEvent(uint16_t entityA,uint16_t entityB,float x_norm,float y_norm,bool begin_ev);
       void add_TriggerEvent(uint16_t entityA,uint16_t entityB,bool begin_ev);
       void request_destroy_joint(b2Joint* jnt);

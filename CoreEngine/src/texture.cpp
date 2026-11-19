@@ -3,6 +3,7 @@
 #include<fstream>
 #include "pugixml.hpp"
 #include<hash_support.h>
+#include<EngineContext.h>
 
 //Sprite Catalog Functions
 
@@ -19,7 +20,7 @@ void Sprite_Catalog::free_memory(){
 //Texture Functions
 
 //Load a Texture from Tileset of Tiled
-bool Texture::load_fromTileset(Sprite_Catalog& catalog,uint8_t tex_id,const char* src,SDL_Renderer* render_win,uint16_t firstgid,std::string& image_src){
+bool Texture::load_fromTileset(Sprite_Catalog& catalog,uint8_t tex_id,const char* src,uint16_t firstgid,std::string& image_src){
   pugi::xml_document doc;
   pugi::xml_parse_result result = doc.load_file(src);
   if (!result) {
@@ -60,6 +61,7 @@ bool Texture::load_fromTileset(Sprite_Catalog& catalog,uint8_t tex_id,const char
   if(loadedSurface!=NULL ){
       SDL_Surface* optimized=SDL_ConvertSurfaceFormat(loadedSurface,SDL_PIXELFORMAT_RGBA8888,0);
       if(optimized!=NULL){
+          SDL_Renderer* render_win=EngineContext::get().get_drawContext().get_win_render();
           tex=SDL_CreateTextureFromSurface(render_win,optimized);
           if(tex!=NULL){
                loaded=true;
@@ -140,10 +142,10 @@ void textureManager_system::reserve_memory(uint8_t number_textures){
 }
 
 //Add a New Texture from a Tileset of Tiled
-void textureManager_system::add_fromTileset(const char* src,SDL_Renderer* render_win,uint16_t firstgid){
+void textureManager_system::add_fromTileset(const char* src,uint16_t firstgid){
    Texture temp_tex;
    std::string image_src="";
-   if(temp_tex.load_fromTileset(catalog,list_textures.size(),src,render_win,firstgid,image_src)==false){
+   if(temp_tex.load_fromTileset(catalog,list_textures.size(),src,firstgid,image_src)==false){
       std::cout<<"fail load texture from"<<src<<std::endl;
       return;
    }

@@ -6,6 +6,12 @@
 #include<unordered_map>
 #include <SDL.h>
 
+//Type of Input Drive
+enum INPUT_DRIVE_TYPES:uint8_t{
+   INPUT_DRIVE_MOUSE=0,
+   INPUT_DRIVE_KEYBOARD=1,
+   INPUT_DRIVE_GAMEPAD=2
+};
 
 //Mouse Buttons
 enum MOUSE_BUTTONS:uint8_t{
@@ -36,7 +42,7 @@ enum PLAYER_KEYS:uint16_t{
 //System For Manage the Inputs
 struct Input_System{
    public:
-       void init(uint8_t w_time,std::unordered_map<std::string,std::string> key_config);
+       void init(uint8_t w_time);
        void free_system();
        void reset();
        void update(float dt);
@@ -45,8 +51,11 @@ struct Input_System{
        uint8_t get_keyState(SDL_Scancode code);
        uint8_t get_mouseState(uint8_t button);
        std::vector<uint16_t> get_mousePosition();
+       std::vector<int16_t> get_mouseMove();
+
        uint16_t get_PlayerKey(uint8_t action_player);
        std::string get_lastKey();
+       uint8_t get_input_drive();
    private:
        std::vector<float> keyboard_timers;
        std::vector<float> Gamepads_timers;
@@ -58,7 +67,10 @@ struct Input_System{
        float wait_time;
        uint16_t mouse_x;
        uint16_t mouse_y;
+       int16_t mouse_moveX;
+       int16_t mouse_moveY;
        uint16_t last_keyInput;
+       uint8_t inputs_drives;
 
 };
 

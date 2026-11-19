@@ -2,9 +2,12 @@
 #include "hash_support.h"
 #include<iostream>
 #include<Converter.h>
+#include<EngineContext.h>
 
 //Init Input System
-void Input_System::init(uint8_t w_time,std::unordered_map<std::string,std::string> key_config){
+void Input_System::init(uint8_t w_time){
+  std::unordered_map<std::string,std::string> key_config=EngineContext::get().get_config().get_Config_Data("Input_Config");
+  std::unordered_map<std::string,std::string> drive_config=EngineContext::get().get_config().get_Config_Data("Input_Drives");
   key_states.assign(SDL_NUM_SCANCODES,INPUT_NONE);
   keyboard_timers.assign(SDL_NUM_SCANCODES,0.0);
   action_keys.assign(KEY_COUNT-1,0);
@@ -16,9 +19,29 @@ void Input_System::init(uint8_t w_time,std::unordered_map<std::string,std::strin
           action_keys[id_key]=Converter::strTo_UInt(temp_val);
      }
   }
+  inputs_drives=0;
+  for(const auto& temp_data:drive_config){
+     std::string temp_id=temp_data.first;
+     bool temp_val=Converter::strTo_Boolean(temp_data.second);
+     if(temp_val==false){
+          continue;
+     }
+     if(temp_id=="Mouse"){
+        inputs_drives|=(1U<<INPUT_DRIVE_MOUSE);
+     }
+     else if(temp_id=="Keyboard"){
+        inputs_drives|=(1U<<INPUT_DRIVE_KEYBOARD);
+     }
+     else if(temp_id=="Gamepad"){
+         inputs_drives|=(1U<<INPUT_DRIVE_GAMEPAD);
+     }
+  }
+
   mouse_timers={0.0f,0.0f,0.0f};
   mouse_y=0;
   mouse_x=0;
+  mouse_moveX=0;
+  mouse_moveY=0;
   wait_time=w_time;
   mouse_states.assign(3,INPUT_NONE);
   last_keyInput=0xFFFF;
@@ -101,6 +124,11 @@ void Input_System::update(float dt){
 //Interprete SDL Event
 void Input_System::get_event(SDL_Event ev,float dt){
   if(ev.type==SDL_MOUSEBUTTONDOWN || ev.type==SDL_MOUSEBUTTONUP || ev.type==SDL_MOUSEMOTION){
+      if((inputs_drives &(1U<<INPUT_DRIVE_MOUSE))==0){
+        return;
+      }
+      mouse_moveX=ev.motion.xrel;
+      mouse_moveY=ev.motion.yrel;
       mouse_x=ev.motion.x;
       mouse_y=ev.motion.y;
       int8_t index=-1;
@@ -136,6 +164,9 @@ void Input_System::get_event(SDL_Event ev,float dt){
 
   }
   else if(ev.type==SDL_KEYDOWN || ev.type==SDL_KEYUP){
+      if((inputs_drives &(1U<<INPUT_DRIVE_KEYBOARD))==0){
+        return;
+      }
        const Uint8* keys=SDL_GetKeyboardState(NULL);
        uint8_t last_state=key_states[ev.key.keysym.scancode];
        if(ev.type==SDL_KEYUP){
@@ -160,7 +191,7 @@ void Input_System::get_event(SDL_Event ev,float dt){
 
 //get key state by Name
 uint8_t Input_System:: get_keyState(uint16_t code){
-   if(code>=key_states.size() || code<0){
+   if(code>=key_states.size() ){
        return INPUT_NONE;
    }
    return key_states[code];
@@ -189,12 +220,23 @@ std::vector<uint16_t> Input_System::get_mousePosition(){
    return res;
 }
 
+//Get the Last Movement of Mouse in Pixels
+std::vector<int16_t> Input_System::get_mouseMove(){
+   std::vector<int16_t> res={mouse_moveX,mouse_moveY};
+   return res;
+}
+
 //Get the Scan Key Code from the Action of Player
 uint16_t Input_System::get_PlayerKey(uint8_t action_player){
    if(action_player>=KEY_COUNT-1){
       return key_states.size();
    }
    return action_keys[action_player];
+}
+
+//Get the Input Drive
+uint8_t Input_System::get_input_drive(){
+   return inputs_drives;
 }
 
 //Get the Last key as string

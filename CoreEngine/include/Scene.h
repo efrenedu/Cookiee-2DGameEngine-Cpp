@@ -10,6 +10,7 @@
 #include<Quatree.h>
 
 class Render_DrawSystem;
+class Physic_Engine_System;
 
 
 //Indicate the way to Load the New Scene File
@@ -22,11 +23,11 @@ enum LOADSCENE_MODES:uint8_t{
 //The Active Scene
 struct Scene{
    public:
-       bool Init(ma_engine * engine,std::unordered_map<std::string,std::unordered_map<std::string,std::string>>game_config);
+       bool Init(ma_engine * engine);
        void free_memory();
        void reserve_memory(int16_t num_elements,map<uint8_t,uint16_t> components_count);
-       void update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* input_sys,Game_Config_System* game_config_sys);
-       void load_sceneSource(SDL_Renderer* render_win,uint8_t load_mode=LOAD_REPLACE);
+       void update_scene(float dt);
+       void load_sceneSource();
        void load_scene(int8_t index);
        bool require_loadScene();
        void register_entity(int16_t entity_Id,std::bitset<64> mask,const Entity_Props& props);
@@ -51,6 +52,7 @@ struct Scene{
        Player_System* get_player_sys();
        Animator_System* get_animator_sys();
        SpriteComposer_System* get_SpriteComposer_sys();
+       Script_System* get_script_system();
        std::bitset<64> get_mask(uint16_t id);
        void remove_Jointcomponent(uint16_t id,uint8_t joint_type,bool require_destroy=false);
        Entity_TreeData* get_entity_treeData(uint16_t id);
@@ -83,8 +85,6 @@ struct Scene{
         float threshold_updateQuatree_Entity;
         bool entities_changes_transform;
         int8_t next_scene;
-
-
 
 };
 

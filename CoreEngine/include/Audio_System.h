@@ -39,7 +39,7 @@ struct Audio_System
       void Init_System(ma_engine* target_engine,float music_vol_init, float sfx_vol_init);
       void Free_System();
       void reserve_memory(uint8_t num_sound,uint8_t num_musics);
-      void update_system(Game_Config_System* config_sys);
+      void update_system();
       void add_clip(const char* src,bool is_music,uint32_t hash_name);
       void play_music(uint8_t music_id,bool loop,uint16_t fadeIn_time=0);
       void play_sound(uint8_t sound_index,float pitch,float min_dist=0.0f,float max_dist=0.0f,float posx=0.0f,float posy=0.0f);

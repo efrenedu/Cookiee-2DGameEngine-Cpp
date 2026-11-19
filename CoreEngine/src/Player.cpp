@@ -1,7 +1,11 @@
 #include "player.h"
 #include "Scene.h"
 #include<Input.h>
+#include<Converter.h>
 #include<iostream>
+#include<Render_DrawSystem.h>
+#include<physic_engine.h>
+#include<EngineContext.h>
 
 //Register the Player On the System
 void Player_System::regiser_player(uint16_t id){
@@ -20,7 +24,7 @@ void Player_System::reserve_memory(uint16_t count_player,uint16_t count_entities
 }
 
 //Update the Player by Id
-void Player_System::update_player(std::bitset<64> mask,uint16_t id,Scene* target_scene,float dt,Input_System* input_sys){
+void Player_System::update_player(std::bitset<64> mask,uint16_t id,Scene* target_scene,float dt){
   player_data* ply=get_player(id);
 
   if(ply==NULL){
@@ -30,14 +34,16 @@ void Player_System::update_player(std::bitset<64> mask,uint16_t id,Scene* target
        return;
   }
   UI_System* ui_sys=target_scene->get_UI_sys();
-  uint8_t st=input_sys->get_keyState(SDL_SCANCODE_RIGHT);
+  uint8_t st=EngineContext::get().get_input().get_keyState(SDL_SCANCODE_RIGHT);
   RigidBody_Data* rb=target_scene->get_rigidbody_sys()->get_body(id);
   float f_y=0;
-  if(input_sys->get_keyState(SDL_SCANCODE_SPACE)==INPUT_DOWN){
+
+
+  if(EngineContext::get().get_input().get_keyState(SDL_SCANCODE_SPACE)==INPUT_DOWN){
      f_y=580*dt;
   }
   float x_f=0;
-  if(input_sys->get_keyState(SDL_SCANCODE_LEFT)==INPUT_PRESSED){
+  if(EngineContext::get().get_input().get_keyState(SDL_SCANCODE_LEFT)==INPUT_PRESSED){
      x_f=-1*dt*10;
   }
   else if(st==INPUT_PRESSED){

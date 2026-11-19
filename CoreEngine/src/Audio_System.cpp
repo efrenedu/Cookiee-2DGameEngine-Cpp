@@ -3,6 +3,7 @@
 #include<vector2.h>
 #include<Game_Config.h>
 #include<string>
+#include<EngineContext.h>
 
 //Audio Engine Functions
 
@@ -120,12 +121,12 @@ void Audio_System::reserve_memory(uint8_t num_sounds,uint8_t num_musics){
 }
 
 //Update Audio System
-void Audio_System::update_system(Game_Config_System* config_sys){
+void Audio_System::update_system(){
    int8_t remove_index=-1;
    if(volume_changed){
       volume_changed=false;
-      config_sys->set_param_config(CONFIG_CATEGORY_AUDIO,"Music_Volume",std::to_string(music_volume));
-      config_sys->set_param_config(CONFIG_CATEGORY_AUDIO,"Sfx_Volume",std::to_string(sfx_volume));
+      EngineContext::get().get_config().set_param_config(CONFIG_CATEGORY_AUDIO,"Music_Volume",std::to_string(music_volume));
+      EngineContext::get().get_config().set_param_config(CONFIG_CATEGORY_AUDIO,"Sfx_Volume",std::to_string(sfx_volume));
 
    }
    for(uint8_t i=0;i<list_copy_sounds.size();i++){

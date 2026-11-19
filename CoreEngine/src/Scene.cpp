@@ -1,9 +1,10 @@
 #include "Scene.h"
-#include "Render_DrawSystem.h"
+#include "EngineContext.h"
 #include "math_structs.h"
 
 //Init the Scene  and Systems of It using Config Game Data
-bool Scene::Init(ma_engine* engine,std::unordered_map<std::string,std::unordered_map<std::string,std::string>> game_config){
+bool Scene::Init(ma_engine* engine){
+   std::unordered_map<std::string,std::unordered_map<std::string,std::string>>game_config=EngineContext::get().get_config().get_allConfig();
    next_scene=-1;
    if(game_config.find("Scenes")!=game_config.end()){
       std::unordered_map<std::string,std::string> scenes_config=game_config["Scenes"];
@@ -37,6 +38,7 @@ bool Scene::Init(ma_engine* engine,std::unordered_map<std::string,std::unordered
    if(script_sys.Init()==false){
       return false;
    }
+   fonts_sys.Init();
    next_scene=0;
    audio_sys.Init_System(engine,music_volume,audio_volume);
    quatree_sys.Init(3);
@@ -115,13 +117,15 @@ void Scene::reserve_memory(int16_t num_elements,map<uint8_t,uint16_t> components
 }
 
 //update the Scene
-void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* input_sys,Game_Config_System* game_config_sys){
+void Scene::update_scene(float dt){
    if(dt>1.0){
       return;
    }
    UI_sys.update(dt);
-   audio_sys.update_system(game_config_sys);
+   audio_sys.update_system();
    anim_sys.update_system(dt);
+   UI_sys.update_Widgets_Sprites(this);
+
    uint8_t draw_request=REDRAW_NONE;
    //update entities scripts
    std::vector<uint16_t> near_camera=main_camera.get_NearEntities();
@@ -136,8 +140,14 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
           }
 
       }
+      if(HasComponentBit(mask,RENDER_COMP)){
+          Render_data* render_dat=render_sys.get_render(index);
+          if(render_dat->shadow_data.use_shadow){
+
+          }
+      }
       if(HasComponentBit(mask,PLAYER_COMP)){
-           player_sys.update_player(mask,index,this,dt,input_sys);
+           player_sys.update_player(mask,index,this,dt);
       }
       if(HasComponentBit(mask,ANIMATOR_COMP) && HasComponentBit(mask,RENDER_COMP)){
             Render_data* render=render_sys.get_render(index);
@@ -168,7 +178,7 @@ void Scene::update_scene(Render_DrawSystem* draw_sys,float dt,Input_System* inpu
       draw_request=REDRAW_ENTITIES;
       entities_changes_transform=false;
    }
-   draw_sys->request_redraw(draw_request);
+   EngineContext::get().get_drawContext().request_redraw(draw_request);
 }
 
 //Register the Entity in each Component System Requerid
@@ -221,11 +231,12 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
           break;
        }
        case components_types::RENDER_COMP:{
+          shadow_projection shadow_data;
           int16_t z_index=props.get_int("z_index",0);
           uint8_t draw_mode=props.get_uint("draw_mode",0);
           bool visible=props.get_bool("visible",true);
           uint16_t gid=props.get_uint("gid",0xFFFF)-1;
-          render_sys.register_Entity(visible,draw_mode,gid,z_index,id_entity);
+          render_sys.register_Entity(visible,draw_mode,gid,z_index,id_entity,shadow_data);
           break;
        }
        case components_types::COLLIDER_COMP:{
@@ -406,41 +417,14 @@ void Scene::process_basic_component(components_types comp_type,const Entity_Prop
 //Process only UI Components
 void Scene::process_ui_component(components_types comp_type,const Entity_Props& props,uint16_t id_entity){
    uint8_t ui_count=props.get_uint("UI_Count",0);
-   uint8_t ev_Select_count=props.get_uint("UI_OnSelect_Count",0);
-   uint8_t ev_Unselect_count=props.get_uint("UI_OnUnSelect_Count",0);
-   uint8_t ev_load_count=props.get_uint("UI_OnLoad_Count",0);
    UI_header header;
 
+   header.active_state=props.get_uint("UI_Active_State",UI_ACTIVE_STATE_ACTIVE);
    header.centerX=props.get_int("UI_CenterX",0.0);
    header.centerY=props.get_int("UI_CenterY",0.0);
    header.half_width=props.get_uint("UI_HalfWidth",0.0);
    header.half_height=props.get_uint("UI_HalfHeight",0.0);
-   std::vector<uint8_t>evs_select;
-   std::vector<uint8_t>evs_unselect;
-   std::vector<uint8_t>evs_load;
-   evs_select.reserve(ev_Select_count);
-   evs_unselect.reserve(ev_Unselect_count);
-   evs_load.reserve(ev_load_count);
 
-   for(uint8_t i=0;i<ev_Select_count;i++){
-       std::string str_index=to_string(i);
-       uint8_t next_ev=props.get_uint("UI_Select_Event_"+str_index,0);
-       evs_select.push_back(next_ev);
-   }
-   for(uint8_t i=0;i<ev_Unselect_count;i++){
-       std::string str_index=to_string(i);
-       uint8_t next_ev=props.get_uint("UI_Unselect_Event_"+str_index,0);
-       evs_select.push_back(next_ev);
-   }
-   for(uint8_t i=0;i<ev_load_count;i++){
-       std::string str_index=to_string(i);
-       uint8_t next_ev=props.get_uint("UI_Load_Event_"+str_index,0);
-       evs_select.push_back(next_ev);
-   }
-   header.evs_Select=evs_select;
-   header.evs_Load=evs_load;
-   header.evs_Unselect=evs_unselect;
-   bool has_text=false;
    uint8_t main_type=UI_NONE;
    for(uint8_t i=0;i<ui_count;i++){
       std::string str_index=to_string(i);
@@ -450,26 +434,47 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
           case UI_BUTTON:{
                main_type=UI_BUTTON;
                std::vector<uint16_t> colors;
+               std::vector<uint16_t> colors_labels;
                std::vector<uint16_t> sprites;
+               std::vector<float> count_timers;
+               std::vector<float> max_wait_timers;
                bool is_animated=props.get_bool("UI_Button_Animated",false);;
-               colors.reserve(4);
-               sprites.reserve(4);
                uint8_t states_count=4;
+               uint8_t num_timers=4;
+               colors.assign(states_count,0);
+               sprites.assign(states_count,0xFFFF);
+               colors_labels.assign(states_count,0);
+               count_timers.assign(num_timers,0.0);
+               max_wait_timers.assign(num_timers,0.0);
+               for(uint8_t i=0;i<num_timers;i++){
+                  std::string id_str=to_string(i);
+                  max_wait_timers[i]=props.get_float("UI_Button_Timer_"+id_str,0.0);
+               }
+               Button_Event button_evs;
+               button_evs.callfunction=props.get_string("UI_Button_CallFunction","");
+               button_evs.use_keyInput=props.get_bool("UI_Button_Use_Keys_Input",false);
+               button_evs.trigger_key=props.get_uint("UI_Button_Trigger_Key",0xFFFF);
+               button_evs.selected=props.get_bool("UI_Button_Initial_Selected",false);
+               button_evs.arg_func=props.get_float("UI_Button_Arg_Function",0);
+               button_evs.always_selected=props.get_bool("UI_Button_Always_Selected",false);
+               button_evs.recent_interact=false;
+               button_evs.wait_timers=max_wait_timers;
+               button_evs.count_timers=count_timers;
+               button_evs.show_cooldown_time=props.get_bool("UI_Button_Show_Cooldown_Time",false);
+
                for(uint8_t i=0;i<states_count;i++){
                    std::string id_str=to_string(i);
-                   colors.push_back(Converter::str_to_colorPacked(props.get_string("UI_Button_Color_"+id_str,"")));
-                   sprites.push_back(props.get_uint("UI_Button_Sprite_"+id_str,0xFFFF));
+                   colors[i]=Converter::str_to_colorPacked(props.get_string("UI_Button_Color_"+id_str,""));
+                   colors_labels[i]=Converter::str_to_colorPacked(props.get_string("UI_Button_Label_Color_"+id_str,""));
+                   sprites[i]=props.get_uint("UI_Button_Sprite_"+id_str,0xFFFF);
                }
-               UI_sys.register_button(id_entity,colors,sprites,is_animated);
+               UI_sys.register_button(id_entity,colors,sprites,colors_labels,is_animated,button_evs);
                break;
           }
           case UI_LABEL:{
              if(main_type>=0xFF){
                  main_type=UI_LABEL;
              }
-             has_text=true;
-             std::vector<uint16_t> colors;
-             colors.reserve(3);
              int16_t offset_x=props.get_int("UI_Label_Offset_X",0);
              int16_t offset_y=props.get_int("UI_Label_Offset_Y",0);
              uint8_t font_index=props.get_uint("Font_Id",0xFF);
@@ -479,12 +484,18 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
              uint16_t text_box_h=props.get_uint("UI_Label_Text_Box_Height",header.half_height*2);
 
              std::string text=props.get_string("UI_Label_Text","");
-             uint8_t color_count=3;
-             for(uint8_t i=0;i<color_count;i++){
-                std::string id_str=to_string(i);
-                colors.push_back(Converter::str_to_colorPacked(props.get_string("UI_Label_Color_"+id_str,"")));
+             uint16_t color_text=0;
+             std::vector<std::string> color_vect=Converter::str_toVect(props.get_string("UI_Labet_Text_Color",""));
+             if(color_vect.size()>0){
+
+                uint8_t r=Converter::strTo_UInt(color_vect[0]);
+                uint8_t g=Converter::strTo_UInt(color_vect[1]);
+                uint8_t b=Converter::strTo_UInt(color_vect[2]);
+                uint8_t a=Converter::strTo_UInt(color_vect[3]);
+                color_text=Converter::packRGBA4444(r,g,b,a);
+
              }
-             UI_sys.register_label(id_entity,text,colors,align,text_box_w,text_box_h,single_line,offset_x,offset_y,font_index);
+             UI_sys.register_label(id_entity,text,color_text,align,text_box_w,text_box_h,single_line,offset_x,offset_y,font_index);
              break;
           }
           case UI_VALUEBAR:{
@@ -542,14 +553,39 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
              uint16_t max_width=props.get_uint("UI_Slider_Max_Width",0);
              uint16_t max_height=props.get_uint("UI_Slider_Max_Height",0);
              float initial_val=props.get_float("UI_Slider_Value",1.0);
-             uint16_t bg_sprite=props.get_uint("UI_Slider_Bg_Sprite",0xFFFF);
-             uint16_t bg_color,slider_color,bar_color;
-             uint16_t slider_sprite=props.get_uint("UI_Slider_Slider_Sprite",0xFFFF);
-             uint8_t colors_count=3;
+             std::vector<uint16_t> bg_colors;
+             std::vector<uint16_t> slider_colors;
+             std::vector<uint16_t> bar_colors;
+             std::vector<uint16_t>slider_sprites;
+             bg_colors.assign(2,0);
+             bar_colors.assign(2,0);
+             slider_colors.assign(4,0);
+             slider_sprites.assign(4,0);
+             uint8_t colors_count=8;
+
+             std::string callFunction=props.get_string("UI_Slider_CallFunction","");
+             uint16_t upValue_key=props.get_uint("UI_Slider_UpValue_key",0xFFFF);
+             uint16_t downValue_key=props.get_uint("UI_Slider_DownValue_key",0xFFFF);
+             bool useKey_Inputs=props.get_bool("UI_Slider_Use_Keys_Inputs",false);
+             bool initial_selected=props.get_bool("UI_Slider_Initial_Selected",false);
+             float step_val=props.get_float("UI_Slider_Step",1.0);
+
+             Slider_Event slider_ev;
+             slider_ev.callFunction=callFunction;
+             slider_ev.key_downValue=downValue_key;
+             slider_ev.key_upValue=upValue_key;
+             slider_ev.selected=initial_selected;
+             slider_ev.useKeys=useKey_Inputs;
+             slider_ev.step_val=step_val;
+             slider_ev.dragging=false;
+
              for(uint8_t i=0;i<colors_count;i++){
                   std::string id_str=to_string(i);
                   std::vector<std::string> color_vect=Converter::str_toVect(props.get_string("UI_Slider_Color_"+id_str,""));
                   uint16_t temp_color=0;
+                  if(i<4){
+                       slider_sprites[i]=props.get_uint("UI_Slider_Slider_Sprite_"+id_str,0xFFFF);
+                  }
                   if(color_vect.size()>=4){
                       uint8_t r,g,b,a;
                       r=Converter::strTo_UInt(color_vect[0]);
@@ -559,13 +595,19 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
                       temp_color=Converter::packRGBA4444(r,g,b,a);
                   }
                   switch(i){
-                     case 0: bg_color=temp_color;break;
-                     case 1: bar_color=temp_color;break;
-                     case 2: slider_color=temp_color;break;
+                     case 0: bg_colors[0]=temp_color;break;
+                     case 1: bar_colors[0]=temp_color;break;
+                     case 2: slider_colors[0]=temp_color;break;
+                     case 3: slider_colors[1]=temp_color;break;
+                     case 4: slider_colors[2]=temp_color;break;
+                     case 5: slider_colors[3]=temp_color;break;
+                     case 6: bg_colors[1]=temp_color;break;
+                     case 7: bar_colors[1]=temp_color;break;
+
                      default:break;
                   }
              }
-             UI_sys.register_slider(id_entity,initial_val,bar_color,bg_color,slider_color,slider_sprite,max_width,max_height,orientation);
+             UI_sys.register_slider(id_entity,initial_val,bar_colors,bg_colors,slider_colors,slider_sprites,max_width,max_height,orientation,slider_ev);
              break;
           }
           case UI_SCROLLBAR:{
@@ -577,6 +619,19 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
              uint16_t bg_h=props.get_uint("UI_ScrollBar_Bg_Height",default_h);
              float porcentSz_buttons=props.get_float("UI_ScrollBar_Porcent_Buttons",1.0);
              uint8_t orientation=props.get_uint("UI_ScrollBar_Orientation",UI_ORIENTATION_VERTICAL);
+
+             uint16_t upValue_key=props.get_uint("UI_ScrollBar_UpValue_key",0xFFFF);
+             uint16_t downValue_key=props.get_uint("UI_ScrollBar_DownValue_key",0xFFFF);
+             bool useKey_Inputs=props.get_bool("UI_ScrollBar_Use_Keys_Inputs",false);
+             bool initial_selected=props.get_bool("UI_ScrollBar_Initial_Selected",false);
+             float step_val=props.get_float("UI_ScrollBar_Step",1.0);
+             ScrollBar_Event scroll_ev;
+             scroll_ev.downValue_key=downValue_key;
+             scroll_ev.upValue_key=upValue_key;
+             scroll_ev.is_selected=initial_selected;
+             scroll_ev.step=step_val;
+             scroll_ev.use_keysInput=useKey_Inputs;
+             scroll_ev.dragging=false;
              uint8_t color_count=6;
              std::vector<uint16_t> colors_bar;
              colors_bar.assign(color_count-2,0);
@@ -604,7 +659,7 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
              }
              uint16_t sprite_btns=props.get_uint("UI_ScrollBar_Buttons_Sprite",0xFFFF);
 
-             UI_sys.register_scrollBar(id_entity,bg_w,bg_h,area_w,area_h,color_bg,colors_bar,orientation,porcentSz_buttons,sprite_btns,color_btns);
+             UI_sys.register_scrollBar(id_entity,bg_w,bg_h,area_w,area_h,color_bg,colors_bar,orientation,porcentSz_buttons,sprite_btns,color_btns,scroll_ev);
              break;
           }
           case UI_RADIOBUTTON:{
@@ -671,6 +726,23 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
               std::vector<std::string> border_color_vect=Converter::str_toVect(props.get_string("UI_Panel_Border_Color",""));
               uint16_t bg_color=0;
               uint16_t border_color=0;
+              Panel_Events panel_ev;
+              panel_ev.callfunction=props.get_string("UI_Panel_CallFunction","");
+              panel_ev.closeCallFunction=props.get_string("UI_Panel_Close_CallFunction","");
+              panel_ev.close_key=props.get_uint("UI_Panel_Close_Key",0xFFFF);
+              panel_ev.open_key=props.get_uint("UI_Panel_Open_Key",0xFFFF);
+              panel_ev.recent_open=false;
+              panel_ev.recent_close=false;
+              if(header.active_state==UI_ACTIVE_STATE_ACTIVE){
+                 panel_ev.recent_open=true;
+              }
+              else{
+                 panel_ev.recent_close=true;
+              }
+              panel_ev.useKey_Inputs=props.get_bool("UI_Panel_Use_Keys_Input",false);
+              panel_ev.arg_function=props.get_float("UI_Panel_Event_Arg",0);
+              panel_ev.isSelected=props.get_bool("UI_Panel_Initial_Selected",false);
+
               if(bg_color_vect.size()>=4){
                 uint8_t r=Converter::strTo_UInt(bg_color_vect[0]);
                 uint8_t g=Converter::strTo_UInt(bg_color_vect[1]);
@@ -687,7 +759,7 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
 
               }
               bool draw_border=props.get_bool("UI_Panel_Draw_Border",false);
-              UI_sys.register_panel(id_entity,draw_border,bg_color,border_color);
+              UI_sys.register_panel(id_entity,draw_border,bg_color,border_color,panel_ev);
 
               break;
           }
@@ -719,13 +791,26 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
               uint16_t max_height=props.get_uint("UI_ComboBox_Max_Height",header.half_height*2);
               float porcent_button=props.get_float("UI_ComboBox_Button_Size_Porcent",1.0);
               uint8_t items_count=props.get_uint("UI_ComboBox_Items_Count",0);
+
+              ComboBox_Event box_ev;
+              box_ev.callfunction=props.get_string("UI_ComboBox_CallFunction","");
+              box_ev.useKeys_Input=props.get_bool("UI_ComboBox_Use_Keys_Inputs",false);
+              box_ev.selected=props.get_bool("UI_ComboBox_Initial_Selected",false);
+              box_ev.Up_key=props.get_uint("UI_ComboBox_Up_key",0xFFFF);
+              box_ev.Down_key=props.get_uint("UI_ComboBox_Down_key",0xFFFF);
+              box_ev.trigget_key=props.get_uint("UI_ComboBox_Trigger_key",0xFFFF);
+              std::vector<float> evs_items;
+              evs_items.assign(items_count,0);
+
               for(uint8_t i=0;i<items_count;i++){
                   std::string str_index=to_string(i);
                   std::string val_item=props.get_string("UI_ComboBox_Item_"+str_index,"");
-                  if(val_item!=""){
-                     items.push_back(val_item);
-                  }
+                  float arg_itemEv=props.get_float("UI_ComboBox_Item_Arg_"+str_index,0);
+                  items.push_back(val_item);
+                  evs_items[i]=arg_itemEv;
               }
+              box_ev.items_evs=evs_items;
+
               uint8_t color_count=4;
               for(uint8_t i=0;i<color_count;i++){
                  std::string str_index=to_string(i);
@@ -741,7 +826,7 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
                  colors[i]=temp_color;
               }
               uint16_t sprite_btn=props.get_uint("UI_ComboBox_Sprite_Button",0xFFFF);
-              UI_sys.register_comboBox(id_entity,colors,max_width,min_height,max_height,items,max_showItems,porcent_button,sprite_btn);
+              UI_sys.register_comboBox(id_entity,colors,max_width,min_height,max_height,items,max_showItems,porcent_button,sprite_btn,box_ev);
               break;
           }
           case UI_LIST:{
@@ -751,13 +836,30 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
               uint16_t items_height=props.get_uint("UI_ListBox_Items_Height",header.half_height*2);
               uint8_t items_count=props.get_uint("UI_ListBox_Items_Count",0);
               uint16_t bg_color,items_color,sprite_icon;
+              std::vector<float> args_evs;
+              std::vector<float> args_hover_ev;
+              ListBox_Events listbox_evs;
+              listbox_evs.callfunction=props.get_string("UI_ListBox_CallFunction","");
+              listbox_evs.callHoverFunction=props.get_string("UI_ListBox_CallHoverFunction","");
+              listbox_evs.down_key=props.get_uint("UI_ListBox_Down_Key",0xFFFF);
+              listbox_evs.up_key=props.get_uint("UI_ListBox_Up_Key",0xFFFF);
+              listbox_evs.trigger_key=props.get_uint("UI_ListBox_Trigger_Key",0xFFFF);
+              listbox_evs.isSelected=props.get_bool("UI_ListBox_Initial_Selected",false);
+              listbox_evs.useKey_Inputs=props.get_bool("UI_ListBox_Use_Keys_Input",false);
+              args_evs.assign(items_count,0);
+              args_hover_ev.assign(items_count,0);
               for(uint8_t i=0;i<items_count;i++){
                   std::string str_index=to_string(i);
                   std::string val_item=props.get_string("UI_ListBox_Item_"+str_index,"");
-                  if(val_item!=""){
-                     items.push_back(val_item);
-                  }
+                  float arg_item=props.get_float("UI_ListBox_Item_Arg_"+str_index,0);
+                  float arg_itemHover=props.get_float("UI_ListBox_Item_Hover_Arg_"+str_index,0);
+                  args_evs[i]=arg_item;
+                  args_hover_ev[i]=arg_itemHover;
+                  items.push_back(val_item);
               }
+              listbox_evs.args_EvItems=args_evs;
+              listbox_evs.args_HoverItems=args_hover_ev;
+
               uint8_t color_count=2;
               for(uint8_t i=0;i<color_count;i++){
                  std::string str_index=to_string(i);
@@ -778,14 +880,14 @@ void Scene::process_ui_component(components_types comp_type,const Entity_Props& 
                  }
               }
               sprite_icon=props.get_uint("UI_ListBox_Sprite_Icon",0xFFFF);
-              UI_sys.register_listBox(id_entity,bg_color,items_color,sprite_icon,items,max_showItems,items_height);
+              UI_sys.register_listBox(id_entity,bg_color,items_color,sprite_icon,items,max_showItems,items_height,listbox_evs);
               break;
           }
            default:break;
 
       }
    }
-   header.has_text=has_text;
+
    header.main_type=main_type;
    UI_sys.register_Header(id_entity,header);
 }
@@ -810,7 +912,7 @@ void Scene::load_scene(int8_t index){
 }
 
 //Load a Scene by Source
-void Scene::load_sceneSource(SDL_Renderer* render_win,uint8_t load_mode){
+void Scene::load_sceneSource(){
    if(next_scene<0){
       return;
    }
@@ -818,7 +920,7 @@ void Scene::load_sceneSource(SDL_Renderer* render_win,uint8_t load_mode){
    Scene_Loader loader;
    float w_map;
    float h_map;
-   loader.LoadSceneTiledXML(next_scene_path.c_str(),render_win,this,w_map,h_map);
+   loader.LoadSceneTiledXML(next_scene_path.c_str(),this,w_map,h_map);
    next_scene=-1;
    std::vector<uint16_t> entities_send;
    entities_send.reserve(last_entity);
@@ -937,6 +1039,7 @@ void Scene::set_camera(Camera2D cam){
   main_camera=cam;
 }
 
+
 //Get Tilemap System
 System_TileMap* Scene::get_system_tilemap(){
    return &sys_tilemap;
@@ -1043,6 +1146,11 @@ UI_System* Scene::get_UI_sys(){
 //Get Player System
 Player_System* Scene::get_player_sys(){
    return &player_sys;
+}
+
+//Get the Script System
+Script_System* Scene::get_script_system(){
+    return &script_sys;
 }
 
 //Get the Entity Tree Data Required for Quatree Updates

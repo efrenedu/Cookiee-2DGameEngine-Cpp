@@ -14,7 +14,7 @@ bool Game_Config_System::Init(std::string src){
   source=src;
   nlohmann::json json_dat;
   file>>json_dat;
-  std::vector<std::string> targets={"Windows_Config","Audio_Config","Input_Config","Scenes"};
+  std::vector<std::string> targets={"Windows_Config","Audio_Config","Input_Config","Scenes","Input_Drives"};
   for(std::string id:targets){
       if(json_dat.contains(id)){
          config_dat[id]=json_dat[id];
@@ -63,6 +63,7 @@ void Game_Config_System::set_param_config(uint8_t category,std::string param_id,
      case CONFIG_CATEGORY_WINDOWS:category_str="Windows_Config";break;
      case CONFIG_CATEGORY_SCENES:category_str="Scenes";break;
      case CONFIG_CATEGORY_INPUT:category_str="Input_Config";break;
+     case CONFIG_CATEGORY_INPUT_DRIVES:category_str="Input_Drives";break;
      default:break;
   }
   if(category_str==""){

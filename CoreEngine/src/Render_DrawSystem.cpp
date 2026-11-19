@@ -1,6 +1,7 @@
 #include "Render_DrawSystem.h"
 #include "math_structs.h"
 #include<sstream>
+#include<EngineContext.h>
 
 //Init the System
 bool Render_DrawSystem::Init_System(){
@@ -35,13 +36,14 @@ bool Render_DrawSystem::Init_System(){
 }
 
 //Init the Main Windows
-bool Render_DrawSystem::Init_Main_Windows(std::unordered_map<std::string,std::string>config_win){
+bool Render_DrawSystem::Init_Main_Windows(){
    if(splash_render!=NULL){
        SDL_DestroyRenderer(splash_render);
    }
    if(splash_win!=NULL){
       SDL_DestroyWindow(splash_win);
    }
+   std::unordered_map<std::string,std::string> config_win=EngineContext::get().get_config().get_Config_Data("Windows_Config");
    std::vector<std::string> targets={"Width","Height","Title","FullScreen","Target_SizeWidth","Target_SizeHeight"};
    for(std::string id:targets){
       auto it=config_win.find(id);
@@ -92,6 +94,8 @@ void Render_DrawSystem::Free_System(){
     SDL_DestroyTexture(bg_texture);
   }
   redraw=REDRAW_NONE;
+  render_queue.clear();
+  user_UI_requests.clear();
 
 }
 
@@ -101,6 +105,36 @@ void Render_DrawSystem::request_redraw(uint8_t redraw_type){
       return;
    }
    redraw=redraw_type;
+}
+
+//Update the Draw Request from User ,remove the First obsolete request Found
+void Render_DrawSystem::update_requests(float dt){
+   bool has_remove=false;
+   for(uint8_t i=0;i<user_UI_requests.size();i++){
+       float time_passed=user_UI_requests[i].count_time;
+       time_passed+=dt;
+       if(time_passed>=user_UI_requests[i].time_draw && has_remove==false){
+          if(user_UI_requests[i].dinamic_text_ptr!=NULL){
+            user_UI_requests[i].dinamic_text_ptr->availbale=true;
+          }
+          user_UI_requests[i]=user_UI_requests.back();
+          user_UI_requests.pop_back();
+          has_remove=true;
+       }
+       else{
+           RenderRequest req=user_UI_requests[i];
+           req.count_time=time_passed;
+           RenderCommand cmd=req.cmd;
+           req.last_x+=(req.desplz_x*dt);
+           req.last_y+=(req.desplz_y*dt);
+           cmd.rect_world.x=req.last_x;
+           cmd.rect_world.y=req.last_y;
+           req.cmd=cmd;
+           user_UI_requests[i]=req;
+
+       }
+   }
+
 }
 
 //Draw the Scene
@@ -192,9 +226,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
                      false,
                      RENDER_BORDER_ONLY
                  });
-                 std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
-                        return a.z_index<b.z_index;
-                });
+
 
              }
              else if(collider->collider_type==FIGURE_TYPE::FIGURE_SQUARE){
@@ -213,9 +245,7 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
                      false,
                      RENDER_BORDER_ONLY
                  });
-                 std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
-                        return a.z_index<b.z_index;
-                });
+
 
              }
           }
@@ -279,12 +309,13 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
               flipped,
               RENDER_BORDER_NONE
           });
-          std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
-                 return a.z_index<b.z_index;
-          });
+
 
     }
 
+    std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
+        return a.z_index<b.z_index;
+    });
     for (const RenderCommand& cmd:render_queue){
 
         SDL_Texture* tex=cmd.tex_id;
@@ -315,6 +346,16 @@ void  Render_DrawSystem::draw_entities(textureManager_system* texture_sys,uint16
         SDL_RenderCopyEx(main_render,tex,&rect_sprite,&rect_world,static_cast<double>(angle),&pivot,flip_val);
 
     }
+    for(RenderLineCommand cmd:lines_requests){
+
+          uint8_t r,g,b,a;
+          Converter::unpackRGBA4444(cmd.line_color,r,g,b,a);
+          SDL_SetRenderDrawColor(main_render,r,g,b,a);
+          uint16_t offset_x=0;
+          uint16_t offset_y=0;
+          SDL_RenderDrawLine(main_render,cmd.x1,cmd.y1,cmd.x2,cmd.y2);
+    }
+    lines_requests.clear();
     render_queue.clear();
 
 }
@@ -367,11 +408,17 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
     Fonts_System* font_sys=target_scene->get_font_sys();
     uint16_t w_view=0;
     uint16_t h_view=0;
-
+    for (RenderRequest request:user_UI_requests){
+         render_queue.push_back(request.cmd);
+    }
     for(uint16_t i=0;i<target_scene->get_count_entities();i++){
           std::bitset<64> mask_entity=target_scene->get_mask(i);
           if(HasComponentBit(mask_entity,UI_COMP)==false){
              continue;
+          }
+          UI_header* header=ui_sys->get_UIHeader(i);
+          if(header->active_state==UI_ACTIVE_STATE_INACTIVE){
+               continue;
           }
           Transform_Data* data_transform=transf_sys->get_transform(i);
 
@@ -428,7 +475,6 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
           rect.w=width;
           rect.h=height;
 
-          UI_header* header=ui_sys->get_UIHeader(i);
 
           Label* lbl=ui_sys->get_label(i);
           ScrollBar* scroll=ui_sys->get_scrollbar(i);
@@ -492,34 +538,35 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                if(bar!=NULL){
                   bg_rect.x=rect.x;
                   bg_rect.y=rect.y;
-                  bg_rect.w=bar->width_bar;
-                  bg_rect.h=bar->height_bar;
-                  rect.w=bar->width_bar;
-                  rect.h=bar->height_bar;
-                  bg_color=bar->bg_color;
-                  color=bar->bar_colors[bar->bar_state];
-                  use_color=true;
+                  bg_rect.w=bar->layout.width;
+                  bg_rect.h=bar->layout.height;
+                  rect.w=bg_rect.w;
+                  rect.h=bg_rect.h;
+                  use_color=bar->visuals.color_style.use_color;
                   draw_bg=true;
-                  if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
-                     rect.w=bar->value*bar->width_bar;
+                  if(bar->layout.orientation==UI_ORIENTATION_HORIZONTAL){
+                     rect.w=bar->state.value_bar*bar->layout.width;
                   }
                   else{
-                     rect.h=bar->value*bar->height_bar;
+                     rect.h=bar->state.value_bar*bar->layout.height;
                   }
                   tex=NULL;
-                  if(bar->use_bar_colors){
-                    if(bar->border_val>0){
+                  if(use_color){
+                    bg_color=bar->visuals.color_style.bg_color;
+                    uint8_t index_color=bar->visuals.actual_state;
+                    color=bar->visuals.color_style.colors_state[index_color];
+                    uint8_t border_val=bar->visuals.color_style.border;
+                    if(border_val>0){
                         bg_border=RENDER_BORDER_APPEND;
-                        bg_rect.x-=bar->border_val;
-                        bg_rect.y-=bar->border_val;
-                        bg_rect.w+=bar->border_val*2;
-                        bg_rect.h+=bar->border_val*2;
+                        bg_rect.x-=border_val;
+                        bg_rect.y-=border_val;
+                        bg_rect.w+=border_val*2;
+                        bg_rect.h+=border_val*2;
 
                      }
                   }
                   else{
                      draw_bg=false;
-                     use_color=false;
                      draw_Valuebar_Sprites(bg_rect,rect,texture_sys,z_index,bar,ui_sys);
                   }
                }
@@ -530,24 +577,28 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                if(slider!=NULL){
                   bg_rect.x=rect.x;
                   bg_rect.y=rect.y;
-                  bg_rect.w=slider->max_w;
-                  bg_rect.h=slider->max_h;
+                  bg_rect.w=slider->layout.max_w;
+                  bg_rect.h=slider->layout.max_h;
                   rect.w=bg_rect.w;
                   rect.h=bg_rect.h;
-                  bg_color=slider->bg_color;
-                  color=slider->bar_color;
-                  fg_color=slider->slider_color;
+                  bg_color=slider->visual.bg_color[0];
+                  color=slider->visual.bar_color[0];
+                  fg_color=slider->visual.slider_color[slider->visual.actual_state];
+                  if(header->active_state==UI_ACTIVE_STATE_DISABLED){
+                     bg_color=slider->visual.bg_color[1];
+                     color=slider->visual.bar_color[1];
+                  }
                   use_color=true;
                   draw_bg=true;
                   draw_fg=true;
-                  fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,slider->slider_sprite);
+                  fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,slider->visual.slider_sprite[slider->visual.actual_state]);
                   float min_size=std::min(bg_rect.w,bg_rect.h);
                   fg_rect.w=min_size;
                   fg_rect.h=min_size;
                   fg_rect.x=rect.x;
                   fg_rect.y=rect.y;
-                  if(slider->orientation==UI_ORIENTATION_HORIZONTAL){
-                     rect.w=slider->value*slider->max_w;
+                  if(slider->layout.orientation==UI_ORIENTATION_HORIZONTAL){
+                     rect.w=slider->state.value*slider->layout.max_w;
                      fg_rect.x=(rect.x+rect.w)-fg_rect.w;
                      float porcent_increment=0.2;
                      uint16_t offset_y=fg_rect.h*porcent_increment;
@@ -555,13 +606,15 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                      fg_rect.y-=offset_y;
                   }
                   else{
-                     rect.h=slider->value*slider->max_h;
-                     fg_rect.y=(rect.y+rect.w)-fg_rect.w;
+                     rect.h=slider->state.value*slider->layout.max_h;
+                     rect.y=(rect.y+slider->layout.max_h)-rect.h;
+                     fg_rect.y=(rect.y)-fg_rect.h;
                      float porcent_increment=0.2;
                      uint16_t offset_x=fg_rect.w*porcent_increment;
                      fg_rect.w+=offset_x*2;
                      fg_rect.x-=offset_x;
                   }
+
                }
                 break;
              }
@@ -655,41 +708,40 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                     draw_fg=true;
                     bg_rect.x=rect.x;
                     bg_rect.y=rect.y;
-                    bg_rect.w=box->width_box;
-                    color=box->itemHover_color;
-                    uint16_t sz_btn=box->min_height*box->porceSize_btn;
+                    bg_rect.w=box->layout.width_box;
+                    color=box->visual.color_style.itemHover_color;
+                    uint16_t sz_btn=box->layout.min_height*box->layout.porceSize_btn;
 
-                    if(box->open==false){
-                        bg_rect.h=box->min_height;
+                    if(box->layout.open==false){
+                        bg_rect.h=box->layout.min_height;
                         color=0;
                     }
                     else{
                         can_draw_scrollbars=true;
-                        bg_rect.h=box->max_height;
-                        if(box->selected_item==-1){
+                        bg_rect.h=box->layout.max_height;
+                        if(box->data.selected_item==-1){
                              color=0;
                         }
                         else{
-                           rect.h=box->min_height;
-                           rect.w=box->width_box;
-                           rect.y=bg_rect.y+((box->selected_item-box->offset_items)*box->min_height);
-                           color=box->itemHover_color;
+                           rect.h=box->layout.min_height;
+                           rect.w=box->layout.width_box;
+                           rect.y=bg_rect.y+((box->data.selected_item-box->layout.offset_items)*box->layout.min_height);
+                           color=box->visual.color_style.itemHover_color;
                         }
                         rect_container_scroll=bg_rect;
-                        rect_container_scroll.y+=box->min_height;
-                        rect_container_scroll.h-=box->max_height;
+                        rect_container_scroll.y+=box->layout.min_height;
+                        rect_container_scroll.h-=box->layout.max_height;
                     }
 
-                    rect.w=box->width_box;
-                    rect.h=box->min_height;
+                    rect.w=box->layout.width_box;
+                    rect.h=box->layout.min_height;
                     fg_rect.w=sz_btn;
                     fg_rect.h=sz_btn;
                     fg_rect.x=(bg_rect.x+bg_rect.w)-sz_btn;
                     fg_rect.y=bg_rect.y;
-                    fg_color=box->color_btn;
-                    bg_color=box->bg_color;
-                    fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,box->sprite_btn);
-
+                    fg_color=box->visual.color_style.color_btn;
+                    bg_color=box->visual.color_style.bg_color;
+                    fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,box->visual.sprite_btn);
                 }
                 break;
              }
@@ -713,13 +765,13 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                          rect_container_scroll.w=bg_rect.w;
 
                          draw_bg=true;
-                         bg_color=list_bx->bg_color;
+                         bg_color=list_bx->visual.bg_color;
                      }
-                     rect.h=list_bx->heigth_items;
-                     rect.y=bg_rect.y+((list_bx->selected_item-list_bx->offset)*rect.h);
-                     color=list_bx->item_color;
+                     rect.h=list_bx->layout.heigth_items;
+                     rect.y=bg_rect.y+((list_bx->data.selected_item-list_bx->layout.offset)*rect.h);
+                     color=list_bx->visual.item_color;
                      use_color=true;
-                     fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,list_bx->icon_sprite);
+                     fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,list_bx->visual.icon_sprite);
                      if(fg_tex!=NULL){
                          draw_fg=true;
                          fg_rect.x=rect.x-fg_sprite_rect.w;
@@ -817,11 +869,11 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              RenderCommand lbl_command;
              SDL_Rect rect_font;
              SDL_Rect rect_lbl;
-             rect_lbl.x=x+lbl->offsetx;
-             rect_lbl.y=y+lbl->offsety;
+             rect_lbl.x=x+lbl->layout.offsetx;
+             rect_lbl.y=y+lbl->layout.offsety;
              rect_lbl.w=0;
              rect_lbl.h=0;
-             Bitmap_Font* font=font_sys->get_font(lbl->font_index);
+             Bitmap_Font* font=font_sys->get_font(lbl->visual.font_index);
              if(font==NULL){
                  continue;
              }
@@ -831,7 +883,7 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              }
              rect_lbl.w=rect_font.w;
              rect_lbl.h=rect_font.h;
-             uint16_t color_lbl=lbl->colors_states[lbl->actual_state];
+             uint16_t color_lbl=lbl->visual.text_color;
              lbl_command.z_index=z_index+1;
              lbl_command.angle=0;
              lbl_command.flipped=false;
@@ -844,12 +896,11 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              lbl_command.tex_id=text_texture;
              render_queue.push_back(lbl_command);
           }
-          std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
-             return a.z_index<b.z_index;
-          });
-
     }
 
+    std::stable_sort(render_queue.begin(),render_queue.end(),[](const RenderCommand&a, const RenderCommand& b){
+        return a.z_index<b.z_index;
+    });
     for (const RenderCommand& cmd:render_queue){
 
         SDL_Texture* tex=cmd.tex_id;
@@ -897,6 +948,7 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
 
     }
     render_queue.clear();
+
 }
 
 
@@ -905,21 +957,21 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
    if(font_sys==NULL || lbl==NULL || target_font==NULL ){
       return NULL;
    }
-    Rendered_Text* last_text=font_sys->get_Rendered_Text(lbl->last_text_index);
+    Rendered_Text* last_text=font_sys->get_Rendered_Text(lbl->visual.texture_label);
     rect.x=0;
     rect.y=0;
     rect.w=0;
     rect.h=0;
-    if(last_text!=NULL && lbl->has_modify==false){
+    if(last_text!=NULL && lbl->state.has_modify==false){
         rect.w=last_text->width;
         rect.h=last_text->height;
         return last_text->texture_text;
     }
 
-    std::string text=lbl->text_label;
+    std::string text=lbl->state.text_label;
 
-    uint16_t width_box=lbl->label_boxWidth;
-    uint16_t height_box=lbl->label_boxHeight;
+    uint16_t width_box=lbl->layout.label_boxWidth;
+    uint16_t height_box=lbl->layout.label_boxHeight;
 
     SDL_Texture* font_texture=target_font->get_texture();
 
@@ -928,9 +980,9 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
     }
     SDL_Texture* initial_target=SDL_GetRenderTarget(main_render);
     SDL_Texture* new_text_texture=NULL;
-    if(lbl->has_modify==true && last_text!=NULL){
+    if(lbl->state.has_modify==true && last_text!=NULL){
         new_text_texture=last_text->texture_text;
-        lbl->has_modify=false;
+        lbl->state.has_modify=false;
     }
     if(new_text_texture==NULL){
         new_text_texture=SDL_CreateTexture(main_render,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,width_box,height_box);
@@ -943,7 +995,7 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
     uint16_t last_x=0;
     uint16_t last_y=0;
     std::vector<std::string> lines;
-    if(lbl->single_line){
+    if(lbl->layout.single_line){
          lines={text};
     }
     else{
@@ -956,12 +1008,12 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
          if(temp_text.empty()){
              continue;
          }
-         if(lbl->align!=LABEL_ALIGN_LEFT){
+         if(lbl->layout.align!=LABEL_ALIGN_LEFT){
             uint16_t w_line=target_font->get_expected_width(temp_text);
             int16_t dif=width_box-w_line;
             if(dif>0  ){
 
-                if(lbl->align==LABEL_ALIGN_CENTER){
+                if(lbl->layout.align==LABEL_ALIGN_CENTER){
                     last_x=dif/2;
                 }
                 else{
@@ -994,7 +1046,7 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
          last_x=0;
          last_y+=line_h;
     }
-    lbl->last_text_index=font_sys->save_text(new_text_texture,width_box,height_box);
+    lbl->visual.texture_label=font_sys->save_text(new_text_texture,width_box,height_box);
     rect.w=width_box;
     rect.h=height_box;
     SDL_SetRenderTarget(main_render,initial_target);
@@ -1002,27 +1054,49 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
 
 }
 
+//draw the Extremes of ValueBars
+void Render_DrawSystem::draw_extrem_ValueBar(SDL_Texture* tex,SDL_Rect world_rect,SDL_Rect sprite_rect,int8_t z_index){
+    SDL_Point point;
+    point.x=sprite_rect.w*0.5;
+    point.y=sprite_rect.h*0.5;
+    RenderCommand cmd;
+    cmd.angle=0;
+    cmd.flipped=false;
+    cmd.tex_id=tex;
+    cmd.rect_sprite=sprite_rect;
+    cmd.rect_world=world_rect;
+    cmd.render_border=RENDER_BORDER_NONE;
+    cmd.z_index=z_index-1;
+    cmd.pivot=point;
+    cmd.use_color=false;
+    render_queue.push_back(cmd);
+}
+
 
 //Draw a ValueBar Sprites
 bool Render_DrawSystem::draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect,textureManager_system* texture_sys,int8_t z_index,ValueBar* bar,UI_System* ui_sys){
-     if(bar==NULL || texture_sys==NULL){
+     if(bar==NULL || texture_sys==NULL || ui_sys==NULL){
           return false;
      }
 
-     //get the main texture and reference Sprite Rect for Bar Sprites
+     //get the main texture and requerids Sprite Rects
      SDL_Rect ref_rect;
-     SDL_Texture* main_tex= texture_sys->get_texture_fromSprite(ref_rect,bar->bar_sprites[VALUEBAR_STATE_COMPLETE]);
+     SDL_Texture* main_tex= texture_sys->get_texture_fromSprite(ref_rect,bar->visuals.spriteStyle.sprites_bar[VALUEBAR_STATE_COMPLETE]);
      if(main_tex==NULL){
          return false;
      }
-     SDL_Rect extremeBg_left_rect=texture_sys->get_RectSprite(bar->bg_sprites[0]);
-     SDL_Rect centerBg_rect=texture_sys->get_RectSprite(bar->bg_sprites[1]);
+     SDL_Rect extremeBg_left_rect=texture_sys->get_RectSprite(bar->visuals.spriteStyle.sprites_bg[0]);
+     SDL_Rect centerBg_rect=texture_sys->get_RectSprite(bar->visuals.spriteStyle.sprites_bg[1]);
+     SDL_Rect extremeBg_right_rect=texture_sys->get_RectSprite(bar->visuals.spriteStyle.sprites_bg[2]);
+
      uint16_t actual_pos=0;
      uint16_t end_pos=0;
      uint16_t end_bg=0;
      uint16_t target_size=0;
      bool bar_finished=false;
-     if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
+
+     //Calculate Start and End Points
+     if(bar->layout.orientation==UI_ORIENTATION_HORIZONTAL){
          actual_pos=bar_rect.x;
          end_pos=bar_rect.x+bar_rect.w;
          target_size=ref_rect.w;
@@ -1035,53 +1109,60 @@ bool Render_DrawSystem::draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect
         target_size=ref_rect.h;
         end_bg=bg_rect.y+bg_rect.h;
      }
+
+     //draw extremes of Bg
      if(extremeBg_left_rect.w!=0 && extremeBg_left_rect.h!=0){
+
          SDL_Rect rect_left;
-         SDL_Point point_left;
          rect_left.w=extremeBg_left_rect.w;
          rect_left.h=extremeBg_left_rect.h;
-         if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
+         if(bar->layout.orientation==UI_ORIENTATION_HORIZONTAL){
             rect_left.x=bg_rect.x-rect_left.w;
             rect_left.y=bg_rect.y;
-
          }
          else{
             rect_left.x=bg_rect.x;
             rect_left.y=bg_rect.y-rect_left.h;
          }
-         point_left.x=extremeBg_left_rect.w*0.5;
-         point_left.y=extremeBg_left_rect.h*0.5;
-         RenderCommand cmd_leftBg;
-         cmd_leftBg.angle=0;
-         cmd_leftBg.flipped=false;
-         cmd_leftBg.tex_id=main_tex;
-         cmd_leftBg.rect_sprite=extremeBg_left_rect;
-         cmd_leftBg.rect_world=rect_left;
-         cmd_leftBg.render_border=RENDER_BORDER_NONE;
-         cmd_leftBg.z_index=z_index-1;
-         cmd_leftBg.pivot=point_left;
-         cmd_leftBg.use_color=false;
-         render_queue.push_back(cmd_leftBg);
-     }
-     SDL_Texture* new_bar_tex=NULL;
-     SDL_Rect rect_tex={0,0,bar->max_width,bar->max_height};
-     SDL_Rect rect_world={bar_rect.x,bar_rect.y,bar->max_width,bar->max_height};
+         draw_extrem_ValueBar(main_tex,rect_left,extremeBg_left_rect,z_index);
 
-     Rendered_ValueBars* last_barRendered=ui_sys->get_saved_valueBar_texture(bar->saved_texture);
+     }
+     if(extremeBg_right_rect.w!=0 && extremeBg_right_rect.h!=0){
+         SDL_Rect rect_right;
+         rect_right.w=extremeBg_right_rect.w;
+         rect_right.h=extremeBg_right_rect.h;
+         if(bar->layout.orientation==UI_ORIENTATION_HORIZONTAL){
+            rect_right.x=end_bg;
+            rect_right.y=bg_rect.y;
+
+         }
+         else{
+            rect_right.x=bg_rect.x;
+            rect_right.y=end_bg;
+         }
+         draw_extrem_ValueBar(main_tex,rect_right,extremeBg_right_rect,z_index);
+     }
+
+     //Get or Make the Target Texture of ValueBar
+     SDL_Texture* new_bar_tex=NULL;
+     SDL_Rect rect_tex={0,0,bar->layout.max_width,bar->layout.max_height};
+     SDL_Rect rect_world={bar_rect.x,bar_rect.y,bar->layout.max_width,bar->layout.max_height};
+
+     Rendered_ValueBars* last_barRendered=ui_sys->get_saved_valueBar_texture(bar->visuals.spriteStyle.saved_texture);
      SDL_Texture* initial_texture=SDL_GetRenderTarget(main_render);
      bool require_redraw=true;
      bool require_save=false;
      if(last_barRendered!=NULL){
          new_bar_tex=last_barRendered->tex;
      }
-     if(new_bar_tex!=NULL && bar->last_value==bar->value){
+     if(new_bar_tex!=NULL && bar->state.last_value==bar->state.value_bar){
            actual_pos=end_bg;
            require_redraw=false;
      }
-     bar->last_value=bar->value;
+     bar->state.last_value=bar->state.value_bar;
      if(new_bar_tex==NULL){
         require_save=true;
-        new_bar_tex=SDL_CreateTexture(main_render,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,bar->max_width,bar->max_height);
+        new_bar_tex=SDL_CreateTexture(main_render,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,bar->layout.max_width,bar->layout.max_height);
         SDL_SetTextureBlendMode(new_bar_tex,SDL_BLENDMODE_BLEND);
      }
 
@@ -1090,11 +1171,13 @@ bool Render_DrawSystem::draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect
           SDL_SetRenderDrawColor(main_render,0,0,0,0);
           SDL_RenderClear(main_render);
      }
+
+     //Draw the Bar and Bg Sprites
      while(actual_pos<end_bg){
          SDL_Rect target_rect;
          SDL_Rect bg_target_rect;
          uint16_t limit_posSprite=0;
-         if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
+         if(bar->layout.orientation==UI_ORIENTATION_HORIZONTAL){
             limit_posSprite=actual_pos+ref_rect.w;
             target_rect.x=actual_pos-bar_rect.x;
             target_rect.y=0;
@@ -1128,12 +1211,16 @@ bool Render_DrawSystem::draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect
 
              uint16_t dif_end=limit_posSprite-end_pos;
              if(dif_end>0){
-                float out_porcent=(float)dif_end/(float)target_size;
-                if(out_porcent>=0.3){
-                     target_sprite=bar->bar_sprites[VALUEBAR_STATE_MEDIUM];
-                }
-                else if(out_porcent>=0.7){
-                   target_sprite=bar->bar_sprites[VALUEBAR_STATE_LOW];
+                 float out_porcent=(float)dif_end/(float)target_size;
+                 if(out_porcent>=0.3){
+                     target_sprite=bar->visuals.spriteStyle.sprites_bar[VALUEBAR_STATE_MEDIUM];
+                 }
+                 else if(out_porcent>=0.7){
+                   target_sprite=bar->visuals.spriteStyle.sprites_bar[VALUEBAR_STATE_LOW];
+                 }
+                 else{
+                     target_sprite=bar->visuals.spriteStyle.sprites_bar[VALUEBAR_STATE_COMPLETE];
+
                  }
              }
          }
@@ -1148,6 +1235,8 @@ bool Render_DrawSystem::draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect
      }
 
      SDL_SetRenderTarget(main_render,initial_texture);
+
+     //Send the Request for draw the Bar Texture
      SDL_Point pt;
      pt.x=rect_tex.x*0.5;
      pt.y=rect_tex.y*0.5;
@@ -1161,39 +1250,8 @@ bool Render_DrawSystem::draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect
      cmd.pivot=pt;
      cmd.tex_id=new_bar_tex;
      render_queue.push_back(cmd);
-
      if(new_bar_tex!=NULL &&require_save){
-          bar->saved_texture=ui_sys->save_valueBar_texture(new_bar_tex,rect_tex,rect_world);
-
-     }
-     SDL_Rect extremeBg_right_rect=texture_sys->get_RectSprite(bar->bg_sprites[2]);
-     if(extremeBg_right_rect.w!=0 && extremeBg_right_rect.h!=0){
-         SDL_Rect rect_right;
-         rect_right.w=extremeBg_right_rect.w;
-         rect_right.h=extremeBg_right_rect.h;
-         if(bar->orientation==UI_ORIENTATION_HORIZONTAL){
-            rect_right.x=actual_pos;
-            rect_right.y=bg_rect.y;
-
-         }
-         else{
-            rect_right.x=bg_rect.x;
-            rect_right.y=actual_pos;
-         }
-         SDL_Point point_left;
-         point_left.x=extremeBg_right_rect.w*0.5;
-         point_left.y=extremeBg_right_rect.h*0.5;
-         RenderCommand cmd_righBg;
-         cmd_righBg.angle=0;
-         cmd_righBg.flipped=false;
-         cmd_righBg.tex_id=main_tex;
-         cmd_righBg.rect_sprite=extremeBg_right_rect;
-         cmd_righBg.rect_world=rect_right;
-         cmd_righBg.render_border=RENDER_BORDER_NONE;
-         cmd_righBg.z_index=z_index-1;
-         cmd_righBg.pivot=point_left;
-         cmd_righBg.use_color=false;
-         render_queue.push_back(cmd_righBg);
+          bar->visuals.spriteStyle.saved_texture=ui_sys->save_valueBar_texture(new_bar_tex,rect_tex,rect_world);
      }
      return true;
 }
@@ -1204,42 +1262,47 @@ void Render_DrawSystem::draw_scrollBar(ScrollBar* scroll,textureManager_system* 
      SDL_Rect rect_bar;
      SDL_Rect left_btn;
      SDL_Rect right_btn;
-     uint16_t sz_btns=scroll->size_buttons;
+     uint16_t sz_btns=scroll->layout.size_buttons;
      left_btn.w=sz_btns;
      left_btn.h=sz_btns;
+     bool is_disabled=scroll->visual.actual_state==UI_STATE_DISABLED;
      right_btn.w=sz_btns;
      right_btn.h=sz_btns;
-     rect_scroll.w=scroll->max_width_Bg;
-     rect_scroll.h=scroll->max_height_bg;
-     rect_bar.w=scroll->width_bar;
-     rect_bar.h=scroll->height_bar;
-     if(scroll->orientation==UI_ORIENTATION_HORIZONTAL){
-         rect_scroll.x=rect_container.x;
+     rect_scroll.w=scroll->layout.max_width_Bg;
+     rect_scroll.h=scroll->layout.max_height_bg;
+     rect_bar.w=scroll->layout.width_bar;
+     rect_bar.h=scroll->layout.height_bar;
+
+     if(scroll->layout.orientation==UI_ORIENTATION_HORIZONTAL){
+         rect_scroll.x=rect_container.x+scroll->layout.size_buttons;
          rect_scroll.y=(rect_container.y+rect_container.h)-rect_scroll.h;
          rect_bar.y=rect_scroll.y;
          rect_bar.x=rect_scroll.x+(scroll->desplacement*(rect_scroll.w-rect_bar.w));
-         right_btn.x=(rect_scroll.x+rect_scroll.w)-sz_btns;
+         right_btn.x=(rect_scroll.x+rect_scroll.w);
          right_btn.y=rect_scroll.y;
+         left_btn.x=rect_container.x;
+         left_btn.y=rect_scroll.y;
      }
      else{
          rect_scroll.x=(rect_container.x+rect_container.w)-rect_scroll.w;
-         rect_scroll.y=rect_container.y;
+         rect_scroll.y=rect_container.y+scroll->layout.size_buttons;
          rect_bar.y=rect_scroll.y+(scroll->desplacement*(rect_scroll.h-rect_bar.h));
          rect_bar.x=rect_scroll.x;
          right_btn.x=rect_scroll.x;
-         right_btn.y=(rect_scroll.y+rect_scroll.h)-sz_btns;
+         right_btn.y=(rect_scroll.y+rect_scroll.h);
+         left_btn.x=rect_scroll.x;
+         left_btn.y=rect_container.y;
      }
-     left_btn.x=rect_scroll.x;
-     left_btn.y=rect_scroll.y;
+
      RenderCommand cmd_scroll,cmd_bar,cmd_left_btn,cmd_right_btn;
      cmd_scroll.tex_id=NULL;
-     cmd_scroll.color=scroll->bg_color;
+     cmd_scroll.color=scroll->visual.colorStyle.bg_color;
      cmd_scroll.rect_world=rect_scroll;
      cmd_scroll.z_index=z_index+1;
      cmd_scroll.use_color=true;
      cmd_scroll.render_border=RENDER_BORDER_NONE;
      cmd_bar.tex_id=NULL;
-     cmd_bar.color=scroll->bar_colors[scroll->actual_state];
+     cmd_bar.color=scroll->visual.colorStyle.bar_colors[scroll->visual.actual_state];
      cmd_bar.rect_world=rect_bar;
      cmd_bar.z_index=z_index+2;
      cmd_bar.use_color=true;
@@ -1247,7 +1310,7 @@ void Render_DrawSystem::draw_scrollBar(ScrollBar* scroll,textureManager_system* 
 
      bool use_color=true;
      SDL_Rect rect_sprite_btns;
-     SDL_Texture* tex_btns=texture_sys->get_texture_fromSprite(rect_sprite_btns,scroll->btns_sprite);
+     SDL_Texture* tex_btns=texture_sys->get_texture_fromSprite(rect_sprite_btns,scroll->visual.buttons_sprite);
      if(tex_btns!=NULL){
         use_color=false;
      }
@@ -1255,7 +1318,7 @@ void Render_DrawSystem::draw_scrollBar(ScrollBar* scroll,textureManager_system* 
      cmd_left_btn.rect_sprite=rect_sprite_btns;
      cmd_left_btn.angle=0;
      cmd_left_btn.flipped=false;
-     cmd_left_btn.color=scroll->buttons_color;
+     cmd_left_btn.color=scroll->visual.colorStyle.buttons_color;
      cmd_left_btn.rect_world=left_btn;
      cmd_left_btn.z_index=z_index+3;
      cmd_left_btn.use_color=use_color;
@@ -1265,11 +1328,16 @@ void Render_DrawSystem::draw_scrollBar(ScrollBar* scroll,textureManager_system* 
      cmd_right_btn.flipped=false;
      cmd_right_btn.tex_id=tex_btns;
      cmd_right_btn.rect_sprite=rect_sprite_btns;
-     cmd_right_btn.color=scroll->buttons_color;
+     cmd_right_btn.color=scroll->visual.colorStyle.buttons_color;
      cmd_right_btn.rect_world=right_btn;
      cmd_right_btn.z_index=z_index+3;
      cmd_right_btn.use_color=use_color;
      cmd_right_btn.render_border=RENDER_BORDER_NONE;
+     if(is_disabled){
+        cmd_right_btn.color=scroll->visual.colorStyle.bar_colors[UI_STATE_DISABLED];
+        cmd_left_btn.color=scroll->visual.colorStyle.bar_colors[UI_STATE_DISABLED];
+
+     }
      render_queue.push_back(cmd_scroll);
      render_queue.push_back(cmd_bar);
      render_queue.push_back(cmd_left_btn);
@@ -1362,7 +1430,7 @@ void Render_DrawSystem::draw_UiSpriteComposer(Scene* target_scene,textureManager
       return;
   }
   SDL_Texture* main_tex=NULL;
- for(SpriteComposer_Item sprite:composer_spr->sprites){
+  for(SpriteComposer_Item sprite:composer_spr->sprites){
       float offsetx=sprite.offsetX;
       float offsety=sprite.offsetY;
       uint16_t index_sprite=sprite.id_sprite;
@@ -1470,7 +1538,189 @@ void  Render_DrawSystem::draw_tilemap(textureManager_system* texture_sys,System_
 
 }
 
+//Request Draw  a ValueBar
+void Render_DrawSystem::request_ValueBar(Scene* target_scene,uint16_t bg_color,uint16_t bar_color,uint16_t bar_w,uint16_t bar_h,float val,uint16_t px,uint16_t py,uint8_t bar_orientation,float life_time,float desplz_x,float desplz_y){
+   if(target_scene==NULL){
+      return;
+   }
+   SDL_Rect bg_rect={px,py,bar_w,bar_h};
+   SDL_Rect bar_rect={px,py,bar_w,bar_h};
+   if(bar_orientation=UI_ORIENTATION_HORIZONTAL){
+       bar_rect.w=bg_rect.w*val;
+   }
+   else{
+      bar_rect.h=bg_rect.h*val;
+   }
+    RenderCommand cmd_bg;
+   RenderCommand cmd_bar;
+   cmd_bg.color=bg_color;
+   cmd_bg.rect_world=bg_rect;
+   cmd_bg.use_color=true;
+   cmd_bg.z_index=0;
+   cmd_bg.tex_id=NULL;
+   cmd_bar.color=bar_color;
+   cmd_bar.rect_world=bar_rect;
+   cmd_bar.use_color=true;
+   cmd_bar.z_index=1;
+   cmd_bar.render_border=RENDER_BORDER_NONE;
+   cmd_bar.tex_id=NULL;
+   RenderRequest request_bg,request_bar;
+   request_bg.cmd=cmd_bg;
+   request_bg.count_time=0;
+   request_bg.desplz_x=desplz_x;
+   request_bg.desplz_y=desplz_y;
+   request_bg.last_x=px;
+   request_bg.last_y=py;
+   request_bg.time_draw=life_time;
+   request_bg.dinamic_text_ptr=NULL;
+   request_bar.cmd=cmd_bar;
+   request_bar.count_time=0;
+   request_bar.desplz_x=desplz_x;
+   request_bar.desplz_y=desplz_y;
+   request_bar.last_x=px;
+   request_bar.last_y=py;
+   request_bar.time_draw=life_time;
+   request_bar.dinamic_text_ptr=NULL;
 
+   user_UI_requests.push_back(request_bg);
+   user_UI_requests.push_back(request_bar);
+}
+
+//Request draw a Icon
+void Render_DrawSystem::request_icon(Scene* target_scene,uint16_t sprite_id,uint16_t px,uint16_t py,float life_time,float desplz_x,float desplz_y){
+  if(target_scene==NULL){
+      return;
+  }
+  textureManager_system* texture_sys=target_scene->get_texture_system();
+  if(texture_sys==NULL){
+      return;
+  }
+  SDL_Rect rect_sprite;
+  SDL_Texture* texture_target=texture_sys->get_texture_fromSprite(rect_sprite,sprite_id);
+  if(texture_target==NULL){
+     return;
+  }
+  SDL_Rect rect_world={px,py,rect_sprite.w,rect_sprite.h};
+  RenderCommand cmd;
+  SDL_Point pivot={rect_sprite.w*0.5,rect_sprite.h*0.5};
+  cmd.rect_sprite=rect_sprite;
+  cmd.rect_world=rect_world;
+  cmd.tex_id=texture_target;
+  cmd.angle=0;
+  cmd.color=0;
+  cmd.flipped=false;
+  cmd.use_color=false;
+  cmd.z_index=0;
+  cmd.render_border=RENDER_BORDER_NONE;
+  cmd.pivot=pivot;
+  RenderRequest request;
+  request.cmd=cmd;
+  request.count_time=0.0f;
+  request.time_draw=life_time;
+  request.desplz_x=desplz_x;
+  request.desplz_y=desplz_y;
+  request.dinamic_text_ptr=NULL;
+  request.last_x=px;
+  request.last_y=py;
+  user_UI_requests.push_back(request);
+
+}
+//Request Draw a Text
+void Render_DrawSystem::request_text(Scene* target_scene,std::string text,uint16_t px,uint16_t py,uint8_t font_id,uint16_t color,uint8_t font_style,uint8_t align,float life_time,float desplz_x,float desplz_y){
+   if(target_scene==NULL){
+      return;
+   }
+   Fonts_System* font_sys=target_scene->get_font_sys();
+   Bitmap_Font* font=font_sys->get_font(font_id);
+   if(font==NULL){
+      return;
+   }
+   Dinamic_Text* dinamic_target=font_sys->get_Available_DinamicText();
+   if(dinamic_target==NULL){
+      return;
+   }
+   SDL_Texture* initial_target=SDL_GetRenderTarget(main_render);
+   SDL_Texture* Text_texture=dinamic_target->tex;
+   uint8_t pos_x=0;
+   SDL_Texture* font_tex=font->get_texture();
+   if(font_tex==NULL){
+       return;
+   }
+   SDL_SetRenderTarget(main_render,Text_texture);
+   SDL_SetRenderDrawColor(main_render,0,0,0,0);
+   SDL_RenderClear(main_render);
+
+   for(uint8_t i=0;i<text.length();i++){
+       Glyph* letter=font->get_letter(text[i],font_style);
+       if(letter==NULL){
+          continue;
+       }
+       SDL_Rect pos_rect={pos_x,0,letter->w,letter->h};
+       SDL_Rect letter_rect={letter->x,letter->y,letter->w,letter->h};
+       SDL_RenderCopy(main_render,font_tex,&letter_rect,&pos_rect);
+       pos_x+=letter->w;
+   }
+   SDL_SetRenderTarget(main_render,initial_target);
+   dinamic_target->availbale=false;
+   RenderRequest request;
+   request.dinamic_text_ptr=dinamic_target;
+   SDL_Rect rect_text=dinamic_target->text_rect;
+
+   RenderCommand cmd;
+   SDL_Rect world_rect={px,py,rect_text.w,rect_text.h};
+   SDL_Rect texture_rect=rect_text;
+   cmd.use_color=true;
+   cmd.color=color;
+   cmd.angle=0;
+   cmd.flipped=false;
+   cmd.z_index=0;
+   cmd.render_border=RENDER_BORDER_NONE;
+   cmd.rect_world=world_rect;
+   cmd.rect_sprite=texture_rect;
+   cmd.tex_id=Text_texture;
+   request.count_time=0.0f;
+   request.time_draw=life_time;
+   request.cmd=cmd;
+   request.desplz_x=desplz_x;
+   request.desplz_y=desplz_y;
+   request.last_x=world_rect.x;
+   request.last_y=world_rect.y;
+   user_UI_requests.push_back(request);
+}
+
+//Request Draw a Line On World Scene
+void Render_DrawSystem::request_line(Scene* target_scene,uint16_t color,float x1,float x2,float y1,float y2,uint16_t thick){
+     if(target_scene==NULL){
+         return;
+     }
+     Camera2D* cam=target_scene->get_camera();
+     if(cam==NULL){
+          return;
+     }
+     y1*=-1;
+     y2*=-1;
+     float left_cam=cam->getLeft();
+     float right_cam=cam->getRight();
+     float top_cam=cam->getTop();
+     float bottom_cam=cam->getBottom();
+     bool on_Camera=(x1+x2>=left_cam)&&(x1<=right_cam)&&(y1+y2>=bottom_cam) &&(y1<=top_cam);
+     if(on_Camera==false){
+          return;
+     }
+     x1-=left_cam;
+     x2-=left_cam;
+     y1-=bottom_cam;
+     y2-=bottom_cam;
+
+     RenderLineCommand line_cmd;
+     line_cmd.line_color=color;
+     line_cmd.thick=thick;
+     line_cmd.x1=x1;
+     line_cmd.x2=x2;
+     line_cmd.y1=y1;
+     line_cmd.y2=y2;
+     lines_requests.push_back(line_cmd);
+}
 
 //The Windows has Resize
 void Render_DrawSystem::On_WindowResize(uint16_t new_w,uint16_t new_h){

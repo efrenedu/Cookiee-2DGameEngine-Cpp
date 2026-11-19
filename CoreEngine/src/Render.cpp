@@ -1,13 +1,14 @@
 #include "Render.h"
 
 //Register a New Render On the System
-void Render_System::register_Entity(bool visibl,uint8_t draw_mod,uint32_t spr_id,int16_t z_indx,uint16_t id_entity){
+void Render_System::register_Entity(bool visibl,uint8_t draw_mod,uint32_t spr_id,int16_t z_indx,uint16_t id_entity,shadow_projection shadow_dat){
 
   Render_data dat_render;
   dat_render.visible=visibl;
   dat_render.sprite_id=spr_id;
   dat_render.z_index=z_indx;
   dat_render.draw_mode=draw_mod;
+  dat_render.shadow_data=shadow_dat;
   uint16_t next_id=list_renders.size();
   list_renders.push_back(dat_render);
   EntitytoDense[id_entity]=next_id;

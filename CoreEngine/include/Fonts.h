@@ -166,7 +166,7 @@ struct Font_params{
 struct Bitmap_Font{
 
   public:
-       void load_font(const char* src,uint32_t hash_name,Font_params params,SDL_Renderer* target_render);
+       void load_font(const char* src,uint32_t hash_name,Font_params params);
        SDL_Texture* get_texture();
        Glyph* get_letter(uint8_t letter_id,uint8_t variant_id=0);
        Glyph* get_letter(char c,uint8_t variant_id=0);
@@ -184,20 +184,31 @@ struct Bitmap_Font{
 
 };
 
+//For Use in Dinamic Requested Text
+struct Dinamic_Text{
+    SDL_Texture* tex;
+    SDL_Rect text_rect;
+    bool availbale;
+};
+
 //System for Manage the Fonts
 struct Fonts_System{
   public:
+    void Init();
     void reserve_memory(uint8_t num_fonts);
     void free_System();
-    void add_font(const char* src,uint32_t hash_name,Font_params params,SDL_Renderer* target_render);
+    void add_font(const char* src,uint32_t hash_name,Font_params params);
     uint8_t get_FontId(uint32_t hash_name);
     Bitmap_Font* get_font(uint8_t id);
     uint8_t save_text(SDL_Texture* tex, uint16_t w,uint16_t h);
     Rendered_Text* get_Rendered_Text(uint8_t index);
+    Dinamic_Text* get_Available_DinamicText();
 
   private:
     std::vector<Bitmap_Font>list_fonts;
     std::vector<Rendered_Text> renderedTexts_catalog;
+    std::vector<Dinamic_Text> dinamicTexts_Textures;
+
 };
 
 //requerid for wrap text

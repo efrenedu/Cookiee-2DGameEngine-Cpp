@@ -46,9 +46,7 @@ const int32_t Converter::strTo_Int(std::string val,int32_t default_value){
             break;
         }
   }
-  if(negative){
-    res=res*-1;
-  }
+
   if(!has_digits){
       return default_value;
   }

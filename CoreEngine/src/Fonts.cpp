@@ -1,9 +1,9 @@
 #include "Fonts.h"
 #include<iostream>
-
+#include<EngineContext.h>
 
 //Bitmap Font Methods
-void  Bitmap_Font::load_font(const char* src,uint32_t hash_name,Font_params params,SDL_Renderer* target_render){
+void  Bitmap_Font::load_font(const char* src,uint32_t hash_name,Font_params params){
    Glyph fill_val;
    hash_id=hash_name;
    uint16_t size_total=FONT_MAX_VARIANT*FONTCHAR_LIMIT;
@@ -15,7 +15,7 @@ void  Bitmap_Font::load_font(const char* src,uint32_t hash_name,Font_params para
       if(optimized!=NULL){
           uint16_t w_tex=optimized->w;
           uint16_t h_tex=optimized->h;
-
+          SDL_Renderer* target_render=EngineContext::get().get_drawContext().get_win_render();
           font_texture=SDL_CreateTextureFromSurface(target_render,optimized);
           if(font_texture!=NULL){
                if(params.custom_Font_dat.size()<=0){
@@ -164,24 +164,52 @@ uint32_t Bitmap_Font::get_hash(){
     return total;
  }
 
+//Init the Font System
+void Fonts_System::Init(){
+    uint8_t dinamic_count=15;
+    uint8_t max_w=120;
+    uint8_t max_h=16;
+    SDL_Renderer* render=EngineContext::get().get_drawContext().get_win_render();
+    dinamicTexts_Textures.reserve(dinamic_count);
+    for(uint8_t i=0;i<dinamic_count;i++){
+        SDL_Rect rect_text={0,0,max_w,max_h};
+        SDL_Texture* temp_texture=SDL_CreateTexture(render,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,max_w,max_h);
+        SDL_SetTextureBlendMode(temp_texture,SDL_BLENDMODE_BLEND);
+        Dinamic_Text text;
+        text.availbale=true;
+        text.tex=temp_texture;
+        text.text_rect=rect_text;
+        dinamicTexts_Textures.push_back(text);
+    }
+}
+
 //Reserve Memory for the List of Fonts
 void Fonts_System:: reserve_memory(uint8_t num_fonts){
    list_fonts.reserve(num_fonts);
+
 }
 
 //Free the Font System
 void Fonts_System::free_System(){
   list_fonts.clear();
   for(uint8_t i=0;i<renderedTexts_catalog.size();i++){
-      SDL_DestroyTexture(renderedTexts_catalog[i].texture_text);
+      if(renderedTexts_catalog[i].texture_text!=NULL){
+         SDL_DestroyTexture(renderedTexts_catalog[i].texture_text);
+      }
   }
+  for(Dinamic_Text temp_dinamic:dinamicTexts_Textures){
+      if(temp_dinamic.tex!=NULL){
+         SDL_DestroyTexture(temp_dinamic.tex);
+      }
+   }
   renderedTexts_catalog.clear();
+  dinamicTexts_Textures.clear();
 }
 
 //Add a Font to the System from a Image Source
-void Fonts_System::add_font(const char* src,uint32_t hash_name,Font_params params,SDL_Renderer* target_render){
+void Fonts_System::add_font(const char* src,uint32_t hash_name,Font_params params){
   Bitmap_Font next_font;
-  next_font.load_font(src,hash_name,params,target_render);
+  next_font.load_font(src,hash_name,params);
   list_fonts.push_back(next_font);
 
 }
@@ -286,4 +314,14 @@ std::string wrap_text(std::string text,uint16_t max_width,Bitmap_Font* font){
      final_wrappedtext+=current_line;
   }
   return final_wrappedtext;
+}
+
+//Get the First Available Dinamic Text Texture
+Dinamic_Text* Fonts_System::get_Available_DinamicText(){
+   for(uint8_t i=0;i<dinamicTexts_Textures.size();i++){
+      if(dinamicTexts_Textures[i].availbale){
+           return &dinamicTexts_Textures[i];
+      }
+   }
+   return NULL;
 }

@@ -107,6 +107,14 @@ float Camera2D::getTop(){
 
 }
 
+//Convert World Position to Screen Position
+std::vector<float> Camera2D::WorlPos_To_ScreenPos(float x_world,float y_world){
+   x_world-=x;
+   y_world=(-y_world)-y;
+   std::vector<float> res={x_world,y_world};
+   return res;
+}
+
 
 //Get the List of Entities Id Near to Camera
 std::vector<uint16_t> Camera2D::get_NearEntities(){

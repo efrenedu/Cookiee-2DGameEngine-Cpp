@@ -1,10 +1,10 @@
 #include "Screen.h"
 #include "iostream"
 #include "math_structs.h"
+#include<EngineContext.h>
 
 //Init the Screen System
-void Screen_System::Init(SDL_Window* win){
-   win_ptr=win;
+void Screen_System::Init(){
    selected_size=0;
    full_screenX=0;
    full_screenY=0;
@@ -33,9 +33,6 @@ void Screen_System::set_size(int8_t target){
   if(target<0 || target>=list_modes.size()){
       return;
   }
-  if(win_ptr==nullptr){
-      return;
-  }
   selected_size=target;
   uint16_t new_w=list_modes[target].w;
   uint16_t new_h=list_modes[target].h;
@@ -45,6 +42,7 @@ void Screen_System::set_size(int8_t target){
   else{
     On_fullScreen=false;
   }
+  SDL_Window* win_ptr=EngineContext::get().get_drawContext().get_win();
   SDL_SetWindowSize(win_ptr,new_w,new_h);
 
 }

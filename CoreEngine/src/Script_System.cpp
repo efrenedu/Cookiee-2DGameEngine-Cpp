@@ -10,3 +10,7 @@ bool Script_System::Init(){
    luaL_openlibs(L);
    return true;
 }
+
+lua_State* Script_System::get_lua_state(){
+  return L;
+}

@@ -4,7 +4,7 @@
 #include<Scene.h>
 
 //Load Scene Frome Tiled TMX File
-bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_win,Scene* target_scene,float& w_mapPixels,float& h_mapPixels){
+bool Scene_Loader::LoadSceneTiledXML(const char* filepath,Scene* target_scene,float& w_mapPixels,float& h_mapPixels){
     pugi::xml_document doc;
 
     // Carga el archivo directamente desde disco a la memoria
@@ -106,7 +106,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
        src_temp=src_temp.substr(src_temp.find_last_of("/\\") + 1);
        string src="assets\\tilesets\\"+src_temp;
        uint16_t first_gid=tileset_node.attribute("firstgid").as_uint(16);
-       tex_sys->add_fromTileset(src.c_str(),render_win,first_gid);
+       tex_sys->add_fromTileset(src.c_str(),first_gid);
     }
     //Read TileMap
     uint8_t layer_actual=0;
@@ -313,7 +313,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,SDL_Renderer* render_w
                       params.exist_variant=available_variants;
                       std::string customDat_src=props.get_string("font_custom_data","");
 
-                      font_sys->add_font(src.c_str(),hash_name,params,render_win);
+                      font_sys->add_font(src.c_str(),hash_name,params);
                       not_entity=true;
                       break;
                    }

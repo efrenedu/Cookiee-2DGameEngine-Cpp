@@ -5,6 +5,8 @@
 #include<bitset>
 class Scene;
 class Input_System;
+class Physic_Engine_System;
+class Render_DrawSystem;
 
 //Store the Player data
 struct player_data{
@@ -17,7 +19,7 @@ struct Player_System{
    public:
        void reserve_memory(uint16_t count_players, uint16_t count_entities,uint16_t fillvalue);
        void regiser_player(uint16_t id);
-       void update_player(std::bitset<64> mask,uint16_t id,Scene* target_scene,float dt,Input_System* input_sys);
+       void update_player(std::bitset<64> mask,uint16_t id,Scene* target_scene,float dt);
        player_data* get_player(uint16_t id);
        void On_Collision(uint16_t id,uint16_t id_other,float norm_x,float norm_y,bool begin_ev);
        void On_Trigger(uint16_t id,uint16_t id_other,bool begin_ev);

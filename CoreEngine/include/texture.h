@@ -28,7 +28,7 @@ struct Sprite_Catalog{
 //The Data of a Texture
 struct Texture{
   public:
-      bool load_fromTileset(Sprite_Catalog& catalog, uint8_t tex_id,const char* src,SDL_Renderer* render_win,uint16_t firstgid,std::string& image_src);
+      bool load_fromTileset(Sprite_Catalog& catalog, uint8_t tex_id,const char* src,uint16_t firstgid,std::string& image_src);
       void set_sprites(Sprite_Catalog& catalog,uint8_t tex_id,uint16_t w_spr,uint16_t h_spr,uint8_t margin,uint8_t spacing,uint16_t columns,uint16_t spr_count);
       void free_memory();
       bool is_loaded();
@@ -48,7 +48,7 @@ struct Texture{
 //System for Manage the Textures and Sprites of Scenes
 struct textureManager_system{
   public:
-    void add_fromTileset(const char* src,SDL_Renderer* render_win,uint16_t firstgid);
+    void add_fromTileset(const char* src,uint16_t firstgid);
     void free_memory();
     void reserve_memory(uint8_t number_textures);
     SDL_Texture* get_texture(uint8_t tex_id);
