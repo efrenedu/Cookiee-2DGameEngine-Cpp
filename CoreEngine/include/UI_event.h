@@ -25,8 +25,7 @@ enum UI_EVENT_SENDER:uint8_t{
 
 //for send the data of args of Events from the Widgets
 struct EventPayload{
-   std::string text_data;
-   uint16_t entity_target;
+   uint16_t entity_source;
    float value_data;
    uint8_t sender_type;
    bool state_data;

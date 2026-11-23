@@ -4,7 +4,7 @@
 #include<Scene.h>
 
 //Load Scene Frome Tiled TMX File
-bool Scene_Loader::LoadSceneTiledXML(const char* filepath,Scene* target_scene,float& w_mapPixels,float& h_mapPixels){
+bool Scene_Loader::LoadSceneTiledXML(const char* filepath,Scene* target_scene,float& w_mapPixels,float& h_mapPixels,std::vector<uint16_t>& ui_entities){
     pugi::xml_document doc;
 
     // Carga el archivo directamente desde disco a la memoria
@@ -18,6 +18,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,Scene* target_scene,fl
     std::map<uint8_t,uint16_t> comps_count;
     pugi::xml_node sceneNode = doc.child("map");
     uint16_t entities_count=0;
+    uint16_t ui_count=0;
     uint8_t tileset_count=0;
     uint8_t layers_tilemap=0;
     uint8_t num_physic_materials=0;
@@ -56,6 +57,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,Scene* target_scene,fl
                    case hashString("physic_material"):not_entity=true;num_physic_materials++;break;
                    case hashString("camera"):not_entity=true;num_fonts++;break;
                    case hashString("font"):not_entity=true;break;
+                   case hashString("UI"):ui_count++;break;
                    default: break;
                 }
             }
@@ -97,6 +99,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,Scene* target_scene,fl
     audio_sys->reserve_memory(num_sounds,num_musics);
     physic_sys->reserve_memory(num_physic_materials);
     font_sys->reserve_memory(num_fonts);
+    ui_entities.reserve(ui_count);
 
     //Read Tilesets
     for(pugi::xml_node tileset_node=sceneNode.child("tileset"); tileset_node; tileset_node = tileset_node.next_sibling("tileset")) {
@@ -317,7 +320,7 @@ bool Scene_Loader::LoadSceneTiledXML(const char* filepath,Scene* target_scene,fl
                       not_entity=true;
                       break;
                    }
-                   case "UI"_hash:is_ui=true;break;
+                   case "UI"_hash:is_ui=true;ui_entities.push_back(index_entity);break;
                    default:break;
             }
             if(not_entity==true){

@@ -5,7 +5,7 @@
 #include<string>
 #include<SDL.h>
 #include<bitset>
-
+#include<unordered_map>
 class Input_System;
 class Entity_Props;
 class Scene;
@@ -38,9 +38,9 @@ enum UI_TYPES:uint8_t{
 
 //States of CheckButton or Radio Buttons
 enum OPTION_STATE:uint8_t{
-    OPTION_CHECKED=0,
+    OPTION_UNCHECKED=0,
     OPTION_HOVER=1,
-    OPTION_UNCHECKED=2,
+    OPTION_CHECKED=2,
     OPTION_DISABLED=3
 };
 
@@ -78,6 +78,7 @@ enum UI_ACTIVE_STATE:uint8_t{
      UI_ACTIVE_STATE_ACTIVE=0,
      UI_ACTIVE_STATE_INACTIVE=1,
      UI_ACTIVE_STATE_DISABLED=2,
+
 };
 
 struct UI_header{
@@ -85,6 +86,7 @@ struct UI_header{
   int16_t centerY;
   uint16_t half_width;
   uint16_t half_height;
+  uint16_t id_panel;
   uint8_t active_state;
   uint8_t main_type;
 };
@@ -94,13 +96,20 @@ struct UI_header{
 struct ListBox_Layout{
    uint16_t max_item_show;
    uint16_t heigth_items;
-   uint8_t offset;
+   uint16_t width_items;
+   uint16_t Separation_ItemsX;
+   uint16_t Separation_ItemsY;
+   uint8_t direction_items;
+   uint16_t offset;
 };
 
 //Visual Data of ListBox
 struct ListBox_Visual{
-   uint16_t bg_color;
-   uint16_t item_color;
+   std::vector<uint16_t> bg_color;
+   std::vector<uint16_t> items_colors;
+   uint16_t item_bg_color;
+   std::vector<uint8_t> saved_Itemstext_textures;
+   uint8_t font_id;
    uint16_t icon_sprite;
 };
 
@@ -108,11 +117,9 @@ struct ListBox_Visual{
 struct ListBox_Events{
    std::string callfunction;
    std::string callHoverFunction;
-   std::vector<float> args_EvItems;
-   std::vector<float> args_HoverItems;
-   uint16_t up_key;
-   uint16_t down_key;
-   uint16_t trigger_key;
+   uint8_t up_key;
+   uint8_t down_key;
+   uint8_t trigger_key;
    bool useKey_Inputs;
    bool isSelected;
 
@@ -120,8 +127,8 @@ struct ListBox_Events{
 //ListBox Data
 struct ListBox_Data{
    std::vector<std::string> items;
-   std::vector<uint16_t> evs_items;
-   uint8_t selected_item;
+   std::vector<uint8_t>items_states;
+   int16_t selected_item;
 };
 //ListBox Component
 struct List_Box{
@@ -138,7 +145,7 @@ struct Button_Event{
     std::string callfunction;
     std::string initial_labelText;
     float arg_func;
-    uint16_t trigger_key;
+    uint8_t trigger_key;
     bool use_keyInput;
     bool selected;
     bool always_selected;
@@ -192,8 +199,8 @@ struct Panel_Events{
    std::string callfunction;
    std::string closeCallFunction;
    float arg_function;
-   uint16_t open_key;
-   uint16_t close_key;
+   uint8_t open_key;
+   uint8_t close_key;
    bool recent_open;
    bool recent_close;
    bool useKey_Inputs;
@@ -234,9 +241,9 @@ struct Slider_State{
 //Slider Event Data
 struct Slider_Event{
    std::string callFunction;
-   uint16_t key_upValue;
-   uint16_t key_downValue;
    float step_val;
+   uint8_t key_upValue;
+   uint8_t key_downValue;
    bool useKeys;
    bool dragging;
    bool selected;
@@ -315,9 +322,9 @@ struct ScrollBar_layout{
 };
 //Event Data of ScrollBar
 struct ScrollBar_Event{
-   uint16_t upValue_key;
-   uint16_t downValue_key;
    float step;
+   uint8_t upValue_key;
+   uint8_t downValue_key;
    bool dragging;
    bool use_keysInput;
    bool is_selected;
@@ -336,25 +343,32 @@ struct ScrollBar{
 //RadioButton Event Data
 struct Radio_Button_Event{
    std::string callfunction;
-   float arg_event1;
-   bool arg_event2;
-   uint16_t trigget_key;
-   uint16_t nextBtn_key;
-   uint16_t previewBtn_key;
+   float sleep_count;
+   uint8_t nextBtn_key;
+   uint8_t previewBtn_key;
    bool useKeys_Input;
    bool selected;
 };
 
+//Data of RadioButton
+struct Radio_Button_Data{
+    uint8_t index_radioGroup;
+    uint8_t radioGroup_id;
+    uint8_t state;
+};
+
+//Visual Data of RadioButton
+struct Radio_Button_Visual{
+   std::vector<uint16_t> sprites_states;
+   std::vector<uint16_t> colors;
+   std::vector<uint16_t> text_colors;
+};
+
+//RadioButton Component
 struct Radio_Button{
    Radio_Button_Event event_data;
-   std::vector<uint16_t> sprites_states;
-   std::string value;
-   uint16_t bg_color;
-   uint16_t button_color;
-   uint16_t disabled_color;
-   uint16_t sibling_button;
-   uint8_t radio_id;
-   uint8_t state;
+   Radio_Button_Data data;
+   Radio_Button_Visual visual;
 };
 
 //Layout Data of ComboBox
@@ -371,27 +385,30 @@ struct ComboBox_layout{
 //Visual Data of ComboBox
 struct ComboBox_Visual{
   struct{
-    uint16_t bg_color;
-    uint16_t itemHover_color;
-    uint16_t itemTextHover_color;
-    uint16_t color_btn;
+    std::vector<uint16_t> items_colors;
+    std::vector<uint16_t> bg_colors;
+    std::vector<uint16_t> button_colors;
+    uint16_t itemgBg_color;
   }color_style;
-  uint16_t sprite_btn;
+  std::vector<uint16_t> sprite_btn;
+  std::vector<uint8_t> saved_texts;
+  uint8_t font_id;
+
 };
 
 //ComboBox Data
 struct ComboBox_Data{
    std::vector<std::string> items;
+   std::vector<uint8_t> items_states;
    int8_t selected_item;
 };
 
 //Combobox Event Data
 struct ComboBox_Event{
    std::string callfunction;
-   std::vector<float> items_evs;
-   uint16_t trigget_key;
-   uint16_t Up_key;
-   uint16_t Down_key;
+   uint8_t trigget_key;
+   uint8_t Up_key;
+   uint8_t Down_key;
    bool useKeys_Input;
    bool selected;
 
@@ -405,43 +422,38 @@ struct ComboBox{
 
 };
 
+//CheckButton Event Data
 struct CheckButton_Event{
    std::string callfunction;
-   float arg_event1;
-   bool arg_event2;
-   uint16_t trigget_key;
-   uint16_t nextBtn_key;
-   uint16_t previewBtn_key;
+   float arg_event;
+   uint16_t next_focus;
+   uint16_t preview_focus;
+   float sleep_count=0.0f;
+   uint8_t trigget_key;
+   uint8_t nextBtn_key;
+   uint8_t previewBtn_key;
    bool useKeys_Input;
    bool selected;
 };
+
+
+//CheckButton Component
 struct CheckButton{
    CheckButton_Event event_data;
    std::vector<uint16_t> sprites_states;
-   std::string value;
-   uint16_t bg_color;
-   uint16_t button_color;
-   uint16_t disabled_color;
+   std::vector<uint16_t> colors_states;
+   std::vector<uint16_t> colors_text;
    uint8_t state;
 };
 
+//Icon Component
 struct UI_Icon{
    std::vector<uint16_t> sprites_states;
    bool can_changeSprite;
    uint8_t actual_state;
 };
 
-struct OptionBox{
-   std::vector<uint16_t> items_affected;
-   uint16_t Entity_SelectMark;
-   uint16_t bg_color;
-   uint16_t bg_sprite;
-   uint16_t border_color;
-   bool has_changed;
-   uint8_t number_options;
-   uint8_t direction;
-};
-
+//UI Index Data and Header of Each Entity
 struct UIEntity_Data{
    UI_header header;
    uint16_t index_button;
@@ -459,6 +471,7 @@ struct UIEntity_Data{
 
 };
 
+//For Text Writter Effect on Labels
 struct Text_Writter_Animation{
     uint16_t label_id;
     std::string full_text;
@@ -476,14 +489,14 @@ struct Rendered_ValueBars{
 
 };
 
-
+//UI System for Manage UI Components
 struct UI_System
 {
     public:
         void Reserve_Memory(uint16_t ui_components_counts,uint16_t entities_count,uint16_t fillval);
         void Free_Memory();
-        void update(float dt);
-        void update_Widgets_Sprites(Scene* target_scene);
+        void update(float dt,std::vector<uint16_t> ui_entities);
+        void update_Widgets_Sprites(Scene* target_scene,std::vector<uint16_t> ui_entities);
         void Process_Events();
         void set_label_text(std::string text,uint16_t id_label,bool use_typeWritter=false,float speed=0.03);
         void register_Header(uint16_t id,UI_header header);
@@ -492,13 +505,12 @@ struct UI_System
         void register_label(uint16_t id,std::string text,std::uint16_t color_text,uint8_t align,uint16_t text_boxWidth,uint16_t text_boxHeight,bool single_line,uint16_t offsetx,uint16_t offsety,uint8_t font_index);
         void register_valueBar(uint16_t id,float initial_val,std::vector<uint16_t> bar_colors,std::vector<uint16_t> bar_sprites, uint16_t border_val,uint16_t bg_color,std::vector<uint16_t> bg_sprites,uint16_t max_width,uint16_t max_height,uint8_t orientation,bool use_bar_colors,uint16_t width_bar,uint16_t height_bar);
         void register_slider(uint16_t id,float initial_val,std::vector<uint16_t> bar_color,std::vector<uint16_t> bg_color,std::vector<uint16_t> slider_color,std::vector<uint16_t> slider_sprite,uint16_t max_width,uint16_t max_height,uint8_t orientation,Slider_Event slider_ev);
-        void register_listBox(uint16_t id,uint16_t bg_color,uint16_t itemColor,uint16_t icon_sprite,std::vector<std::string> items,uint8_t max_show_items,uint16_t heigth_items,ListBox_Events listbox_evs);
+        void register_listBox(uint16_t id,ListBox_Layout listbx_layout,ListBox_Visual listbx_visual,std::vector<std::string> items,std::vector<uint8_t> items_states,ListBox_Events listbox_evs);
         void register_scrollBar(uint16_t id,uint16_t width_bg,uint16_t height_bar,uint16_t area_w,uint16_t area_h,uint16_t color_bg,std::vector<uint16_t> colors_bar,uint8_t oirentation,float porcent_szBtns,uint16_t btns_sprite,uint16_t color_buttons,ScrollBar_Event scroll_ev);
-        void register_comboBox(uint16_t id,std::vector<uint16_t> colors,uint16_t max_width,uint16_t min_height,uint16_t max_height,std::vector<std::string> items,uint8_t max_show_items,float porcentSize_btn,uint16_t sprite_btn,ComboBox_Event box_ev);
-        void register_checkButton(uint16_t id,std::vector<uint16_t> colors,std::vector<uint16_t> sprites_states,uint8_t initial_state,std::string intern_data);
-        void register_RadioButton(uint16_t id,std::vector<uint16_t> colors,std::vector<uint16_t> sprites_states,uint8_t initial_state,std::string intern_data,uint8_t id_radio);
+        void register_comboBox(uint16_t id,ComboBox_Visual visual,ComboBox_layout layout,std::vector<std::string> items,ComboBox_Event box_ev);
+        void register_checkButton(uint16_t id,std::vector<uint16_t> colors,std::vector<uint16_t> colors_text,std::vector<uint16_t> sprites_states,uint8_t initial_state,CheckButton_Event check_evs);
+        void register_RadioButton(uint16_t id,Radio_Button_Visual visual, Radio_Button_Data data,Radio_Button_Event event_data);
         void register_Icon(uint16_t id,std::vector<uint16_t> list_sprites,bool can_changeSprite);
-
         uint8_t save_valueBar_texture(SDL_Texture* tex,SDL_Rect text_rect,SDL_Rect world_rect);
         Rendered_ValueBars* get_saved_valueBar_texture(uint8_t index);
         UI_header* get_UIHeader(uint16_t id);
@@ -516,13 +528,17 @@ struct UI_System
 
     private:
         bool mouse_inCollisionWidget(uint16_t mouse_x,uint16_t mouse_y,int16_t widget_cx,int16_t widget_cy,uint16_t widget_halfwidth,uint16_t widget_halfheight);
-        void update_buttons(UI_header header,Button* btn,Label*lbl,float dt);
-        void update_listBoxs(UI_header header,List_Box* l_box,Label* lbl,float dt);
-        void update_ComboBoxes(UI_header header,ComboBox* c_box,Label* lbl,float dt);
-        void update_sliders(UI_header header,Slider* slider,float dt);
-        void update_ScrollBars(UI_header header,ScrollBar* scroll,float dt);
-        void update_labels(float dt);
-        void update_panels(UI_header* header,Panel* pnl,float dt);
+        void update_buttons(uint16_t id,UI_header header,Button* btn,Label*lbl,int16_t scroll_x,int16_t scroll_y,float dt);
+        void update_listBoxs(uint16_t id,UI_header header,List_Box* l_box,ScrollBar* scroll,int16_t scroll_x,int16_t scroll_y,float dt);
+        void update_ComboBoxes(uint16_t id,UI_header header,ComboBox* c_box,Label* lbl,ScrollBar* scroll,int16_t scroll_x,int16_t scroll_y,float dt);
+        void update_sliders(uint16_t id,UI_header header,Slider* slider,int16_t scroll_x,int16_t scroll_y,float dt);
+        void update_ScrollBars(uint16_t id,UI_header header,ScrollBar* scroll,int16_t scroll_x,int16_t scroll_y,float dt);
+        void update_labels_TextWritters(float dt);
+        void update_panels(uint16_t id,UI_header* header,Panel* pnl,float dt);
+        void update_checkbuttons(uint16_t id,UI_header header,CheckButton* btn,Label* lbl,int16_t scroll_x,int16_t scroll_y,float dt);
+        bool update_Radiobuttons(uint16_t id,UI_header header,Radio_Button* btn,Label* lbl,int16_t scroll_x,int16_t scroll_y,float dt,std::vector<uint16_t> available_focus);
+        void OnRadio_Button_Select(uint8_t radio_group_id,uint8_t btn_index);
+        std::vector<uint16_t> get_RadioButton_Available_Focus(uint8_t radio_group,uint8_t btn_index);
         std::vector<Button> buttons_list;
         std::vector<Label> labels_list;
         std::vector<Radio_Button> radiobtns_list;
@@ -537,6 +553,7 @@ struct UI_System
         std::vector<Slider> list_sliders;
         std::vector<List_Box> listBox_list;
         std::vector<Rendered_ValueBars> saved_bars_textures;
+        std::unordered_map<uint8_t,std::vector<uint16_t>> radio_groups;
 };
 
 #endif // UI_SYSTEM_H

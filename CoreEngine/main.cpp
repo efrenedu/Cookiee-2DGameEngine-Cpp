@@ -51,8 +51,7 @@ int main( int argc, char* argv[] ){
           EngineContext::get().get_drawContext().Free_System();
           return 0;
     }
-    Screen_System screen;
-    screen.Init();
+    EngineContext::get().get_screen().Init();
     EngineContext::get().get_physic().Init(&target_scene,9.8,0.0,-1.0);
     Timer_System timer_scene;
     EngineContext::get().get_input().init(0.01f);

@@ -96,12 +96,12 @@ void UI_event_System::play_scene(const EventPayload& payload){
 }
 void UI_event_System::set_UI_active(const EventPayload& payload){
 
-  std::bitset<64> mask=scene_ptr->get_mask(payload.entity_target);
+  std::bitset<64> mask=scene_ptr->get_mask(payload.value_data);
   if(HasComponentBit(mask,UI_COMP)==false){
      return;
   }
   UI_System* ui_sys=scene_ptr->get_UI_sys();
-  UI_header* header=ui_sys->get_UIHeader(payload.entity_target);
+  UI_header* header=ui_sys->get_UIHeader(payload.value_data);
   if(header==NULL){
      return;
   }

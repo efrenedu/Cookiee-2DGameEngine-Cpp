@@ -53,7 +53,7 @@ struct Input_System{
        std::vector<uint16_t> get_mousePosition();
        std::vector<int16_t> get_mouseMove();
 
-       uint16_t get_PlayerKey(uint8_t action_player);
+       uint16_t get_ActionKey(uint8_t action_id);
        std::string get_lastKey();
        uint8_t get_input_drive();
    private:

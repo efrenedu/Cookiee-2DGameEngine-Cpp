@@ -26,7 +26,7 @@ struct Scene_Loader{
    public:
       bool LoadSceneXML(const char* filePath, Scene* target_scene,const char* root_name,const char* entity_node_name,const char* component_node_name,const char* header_name);
       bool LoadSceneJSON(const char* filePath,Scene* target_scene,const char* root_name,const char* entity_node_name,const char* component_node_name,const char* header_name);
-      bool LoadSceneTiledXML(const char* filepath,Scene* target_scene,float& w_mapPixels,float& h_mapPixels);
+      bool LoadSceneTiledXML(const char* filepath,Scene* target_scene,float& w_mapPixels,float& h_mapPixels,std::vector<uint16_t>& ui_entities);
    private:
      void reassign_StringParams(Entity_Props& props,Physic_Material_System* physic_sys,Fonts_System* font_sys,std::unordered_map<uint32_t ,uint16_t>hash_names);
 };

@@ -54,3 +54,6 @@ Game_Config_System& EngineContext::get_config(){
 Render_DrawSystem& EngineContext::get_drawContext(){
    return draw_sys;
 }
+Screen_System& EngineContext::get_screen(){
+   return screen_sys;
+}

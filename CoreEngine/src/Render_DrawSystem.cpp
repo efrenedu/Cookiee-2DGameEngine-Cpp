@@ -145,6 +145,7 @@ void  Render_DrawSystem::draw_scene(Scene* target_scene){
     System_TileMap* tilemap=target_scene->get_system_tilemap();
     Camera2D* main_cam=target_scene->get_camera();
     textureManager_system* texture_sys=target_scene->get_texture_system();
+    SDL_RenderSetClipRect(main_render,NULL);
     draw_tilemap(texture_sys,tilemap,main_cam);
     draw_entities(texture_sys,target_scene->get_count_entities(),target_scene,main_cam);
     draw_Particles(texture_sys,main_cam);
@@ -406,11 +407,15 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
     Render_System* render_sys=target_scene->get_render_sys();
     UI_System* ui_sys=target_scene->get_UI_sys();
     Fonts_System* font_sys=target_scene->get_font_sys();
-    uint16_t w_view=0;
-    uint16_t h_view=0;
+    Camera2D* cam=target_scene->get_camera();
+    std::vector<uint16_t> view_size=cam->get_viewPort_Size();
+    uint16_t w_view=view_size[0];
+    uint16_t h_view=view_size[1];
     for (RenderRequest request:user_UI_requests){
          render_queue.push_back(request.cmd);
     }
+    uint16_t last_panel_container=0xFFFF;
+
     for(uint16_t i=0;i<target_scene->get_count_entities();i++){
           std::bitset<64> mask_entity=target_scene->get_mask(i);
           if(HasComponentBit(mask_entity,UI_COMP)==false){
@@ -420,11 +425,46 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
           if(header->active_state==UI_ACTIVE_STATE_INACTIVE){
                continue;
           }
-          Transform_Data* data_transform=transf_sys->get_transform(i);
+          uint16_t parent_panel=header->id_panel;
+          Panel* parent_panel_data=NULL;
+          int16_t parent_scroll_X=0;
+          int16_t parent_scroll_Y=0;
+          if(parent_panel<target_scene->get_count_entities()){
+             parent_panel_data=ui_sys->get_panel(parent_panel);
+             if(parent_panel_data!=NULL){
+                 parent_scroll_X=parent_panel_data->offset_scrollX;
+                 parent_scroll_Y=parent_panel_data->offset_scrollY;
+             }
+          }
+          if(parent_panel!=last_panel_container){
+              last_panel_container=parent_panel;
+              if(parent_panel_data==NULL){
+                 SDL_RenderSetClipRect(main_render,NULL);
+              }
+              else{
+                 SDL_Rect rect_container;
 
-          float x=data_transform->x;
-          float y=data_transform->y;
-          bool flipped=data_transform->flipped;
+                 UI_header* container_header=ui_sys->get_UIHeader(parent_panel);
+                 rect_container.x=container_header->centerX-container_header->half_width;
+                 rect_container.y=container_header->centerY-container_header->half_height;
+                 rect_container.w=container_header->half_width*2;
+                 rect_container.h=container_header->half_height*2;
+                 SDL_RenderSetClipRect(main_render,&rect_container);
+              }
+          }
+          int16_t screen_x=header->centerX-parent_scroll_X;
+          int16_t screen_y=header->centerY-parent_scroll_Y;
+
+          if(screen_x+header->half_width<0 || screen_x-header->half_width>=w_view){
+
+              continue;
+          }
+          if(screen_y+header->half_height<0 || screen_y-header->half_height>=h_view){
+              continue;
+          }
+          screen_x-=header->half_width;
+          screen_y-=header->half_height;
+          bool flipped=false;
           uint16_t width=32;
           uint16_t height=32;
           SDL_Rect rect;
@@ -463,17 +503,19 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              z_index=render_dat->z_index;
              tex=texture_sys->get_texture_fromSprite(rect_sprite,render_dat->sprite_id);
           }
-          rect.x=x;
-          rect.y=y;
+
           if(tex!=NULL){
             width=rect_sprite.w;
             height=rect_sprite.h;
           }
+
           uint8_t border=RENDER_BORDER_NONE;
           uint8_t bg_border=RENDER_BORDER_NONE;
           uint16_t border_color=0;
           rect.w=width;
           rect.h=height;
+          rect.x=screen_x;
+          rect.y=screen_y;
 
 
           Label* lbl=ui_sys->get_label(i);
@@ -488,15 +530,15 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                    if(tex!=NULL){
                       if(is_composer){
                           SDL_Rect rect_composer;
-                          draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,header->centerX,header->centerY,rect_composer);
+                          draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,screen_x,screen_y,rect_composer);
                           ignore_ui=true;
                           break;
                       }
                    }
                    else{
                      use_color=true;
-                     rect.x=header->centerX-header->half_width;
-                     rect.y=header->centerY-header->half_height;
+                     rect.x=screen_x;
+                     rect.y=screen_y;
                      rect.w=header->half_width*2;
                      rect.h=header->half_height*2;
 
@@ -510,7 +552,7 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                    can_draw_scrollbars=true;
                    if(tex!=NULL && is_composer){
                         SDL_Rect rect_composer;
-                        draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,header->centerX,header->centerY,rect_composer);
+                        draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,screen_x,screen_y,rect_composer);
                         rect_container_scroll=rect_composer;
                         ignore_ui=true;
                         break;
@@ -519,8 +561,8 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                       tex=NULL;
                       use_color=true;
                       color=pnl->bg_color;
-                      rect.x=header->centerX-header->half_width;
-                      rect.y=header->centerY-header->half_height;
+                      rect.x=screen_x;
+                      rect.y=screen_y;
                       rect.w=header->half_width*2;
                       rect.h=header->half_height*2;
                       rect_container_scroll=rect;
@@ -626,18 +668,14 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                         draw_bg=true;
                         rect.w=header->half_width*2;
                         rect.h=header->half_height*2;
-                        bg_color=check->bg_color;
+                        bg_color=(check->state!=OPTION_CHECKED)?check->colors_states[check->state]:check->colors_states[OPTION_UNCHECKED];
                         color=0;
                         bg_rect.x=rect.x;
                         bg_rect.y=rect.y;
                         bg_rect.w=rect.w;
                         bg_rect.h=rect.h;
-                        if(check->state==OPTION_DISABLED){
-                             color=check->disabled_color;
-                             bg_color=check->disabled_color;
-                        }
-                        else if(check->state==OPTION_CHECKED){
-                              color=check->button_color;
+                        if(check->state==OPTION_CHECKED){
+                              color=check->colors_states[OPTION_CHECKED];
                               float reduce_factor=0.125;
                               uint16_t w_reduce=rect.w*reduce_factor;
                               uint16_t h_reduce=rect.h*reduce_factor;
@@ -645,7 +683,6 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                               rect.h-=h_reduce*2;
                               rect.x+=w_reduce;
                               rect.y+=h_reduce;
-
                         }
 
                      }
@@ -660,18 +697,15 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                         draw_bg=true;
                         rect.w=header->half_width*2;
                         rect.h=header->half_height*2;
-                        bg_color=btn->bg_color;
-                        color=0;
                         bg_rect.x=rect.x;
                         bg_rect.y=rect.y;
                         bg_rect.w=rect.w;
                         bg_rect.h=rect.h;
-                        if(btn->state==OPTION_DISABLED){
-                             color=btn->disabled_color;
-                             bg_color=btn->disabled_color;
-                        }
-                        else if(btn->state==OPTION_CHECKED){
-                              color=btn->button_color;
+                        color=0;
+                        bg_color=(btn->data.state!=OPTION_CHECKED)?btn->visual.colors[btn->data.state]:btn->visual.colors[OPTION_UNCHECKED];
+                        if(btn->data.state==OPTION_CHECKED){
+                              color=btn->visual.colors[OPTION_CHECKED];
+
                               float reduce_factor=0.125;
                               uint16_t w_reduce=rect.w*reduce_factor;
                               uint16_t h_reduce=rect.h*reduce_factor;
@@ -689,7 +723,7 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              case UI_ICON:{
                 if(tex!=NULL && is_composer){
                     SDL_Rect ref_rect;
-                    draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,header->centerX,header->centerY,ref_rect);
+                    draw_UiSpriteComposer(target_scene,texture_sys,i,z_index,screen_x,screen_y,ref_rect);
                     ignore_ui=true;
                 }
                 if(tex==NULL){
@@ -709,28 +743,38 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                     bg_rect.x=rect.x;
                     bg_rect.y=rect.y;
                     bg_rect.w=box->layout.width_box;
-                    color=box->visual.color_style.itemHover_color;
                     uint16_t sz_btn=box->layout.min_height*box->layout.porceSize_btn;
 
+                    bool disabled_widget=(header->active_state==UI_ACTIVE_STATE_DISABLED)?true:false;
                     if(box->layout.open==false){
                         bg_rect.h=box->layout.min_height;
                         color=0;
                     }
                     else{
                         can_draw_scrollbars=true;
-                        bg_rect.h=box->layout.max_height;
+                        bg_rect.h=box->layout.min_height+box->layout.max_height;
                         if(box->data.selected_item==-1){
                              color=0;
                         }
                         else{
                            rect.h=box->layout.min_height;
                            rect.w=box->layout.width_box;
-                           rect.y=bg_rect.y+((box->data.selected_item-box->layout.offset_items)*box->layout.min_height);
-                           color=box->visual.color_style.itemHover_color;
+                           rect.y=bg_rect.y+(((box->data.selected_item+1)-box->layout.offset_items)*box->layout.min_height);
+                           color=box->visual.color_style.itemgBg_color;
+                           if((box->data.selected_item-box->layout.offset_items)<0){
+                              color=0;
+                           }
                         }
                         rect_container_scroll=bg_rect;
                         rect_container_scroll.y+=box->layout.min_height;
                         rect_container_scroll.h-=box->layout.max_height;
+                        SDL_Rect text_rect={bg_rect.x,bg_rect.y+box->layout.min_height,box->layout.width_box,box->layout.min_height};
+                        text_rect.y-=(box->layout.offset_items*text_rect.h);
+                        Bitmap_Font* font_target=font_sys->get_font(box->visual.font_id);
+                        uint16_t start_index=box->layout.offset_items;
+                        uint16_t end_index=start_index+box->layout.max_showItems;
+                        draw_textList(start_index,end_index,font_sys,font_target,text_rect,box->data.items,box->data.items_states,box->visual.color_style.items_colors,box->visual.saved_texts,z_index+1,0,0,UI_ORIENTATION_VERTICAL,disabled_widget);
+
                     }
 
                     rect.w=box->layout.width_box;
@@ -739,15 +783,25 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                     fg_rect.h=sz_btn;
                     fg_rect.x=(bg_rect.x+bg_rect.w)-sz_btn;
                     fg_rect.y=bg_rect.y;
-                    fg_color=box->visual.color_style.color_btn;
-                    bg_color=box->visual.color_style.bg_color;
-                    fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,box->visual.sprite_btn);
+                    fg_color=box->visual.color_style.button_colors[0];
+                    bg_color=box->visual.color_style.bg_colors[0];
+                    if(header->active_state==UI_ACTIVE_STATE_DISABLED){
+                         bg_color=box->visual.color_style.bg_colors[1];
+                         fg_color=box->visual.color_style.button_colors[1];
+                         fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,box->visual.sprite_btn[1]);
+                         color=0;
+                    }
+                    else{
+                        fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,box->visual.sprite_btn[0]);
+                    }
+
                 }
                 break;
              }
              case UI_LIST:{
                 List_Box* list_bx=ui_sys->get_list_box(i);
                 if(list_bx!=NULL){
+                     SDL_Rect rect_text;
                      rect.h=header->half_height*2;
                      rect.w=header->half_width*2;
                      can_draw_scrollbars=true;
@@ -763,21 +817,62 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
                          rect_container_scroll.y=bg_rect.y;
                          rect_container_scroll.w=bg_rect.h;
                          rect_container_scroll.w=bg_rect.w;
-
                          draw_bg=true;
-                         bg_color=list_bx->visual.bg_color;
+                         bg_color=list_bx->visual.bg_color[0];
                      }
                      rect.h=list_bx->layout.heigth_items;
-                     rect.y=bg_rect.y+((list_bx->data.selected_item-list_bx->layout.offset)*rect.h);
-                     color=list_bx->visual.item_color;
-                     use_color=true;
-                     fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,list_bx->visual.icon_sprite);
-                     if(fg_tex!=NULL){
-                         draw_fg=true;
-                         fg_rect.x=rect.x-fg_sprite_rect.w;
-                         fg_rect.y=rect.y;
-                         fg_rect.w=fg_sprite_rect.w;
-                         fg_rect.h=fg_sprite_rect.h;
+                     rect.w=list_bx->layout.width_items;
+
+                     int16_t target_item=list_bx->data.selected_item;
+                     rect_text.w=list_bx->layout.width_items;
+                     rect_text.h=list_bx->layout.heigth_items;
+                     rect_text.x=bg_rect.x;
+                     rect_text.y=bg_rect.y;
+                     uint16_t first_index,last_index;
+                     first_index=list_bx->layout.offset;
+                     last_index=first_index+list_bx->layout.max_item_show;
+                     Bitmap_Font* font_target=font_sys->get_font(list_bx->visual.font_id);
+                     if(list_bx->layout.direction_items==UI_ORIENTATION_VERTICAL){
+                        rect_text.y-=((list_bx->layout.offset*rect_text.h)+(list_bx->layout.offset*list_bx->layout.Separation_ItemsY));
+                     }
+                     else{
+                        rect_text.x-=((list_bx->layout.offset*rect_text.w)+(list_bx->layout.offset*list_bx->layout.Separation_ItemsX));
+                     }
+                     bool disabled_text=(header->active_state==UI_ACTIVE_STATE_DISABLED)?true:false;
+                     draw_textList(first_index,last_index,font_sys,font_target,rect_text,list_bx->data.items,list_bx->data.items_states,list_bx->visual.items_colors,list_bx->visual.saved_Itemstext_textures,z_index+1,list_bx->layout.Separation_ItemsX,list_bx->layout.Separation_ItemsY,list_bx->layout.direction_items,disabled_text);
+
+                     if(target_item!=-1){
+
+                        target_item-=list_bx->layout.offset;
+                        if(list_bx->layout.direction_items==UI_ORIENTATION_VERTICAL){
+                           rect.y=bg_rect.y+((target_item*rect.h)+(target_item*list_bx->layout.Separation_ItemsY));
+
+                        }
+                        else{
+                           rect.x=bg_rect.x+((target_item*rect.w)+(target_item*list_bx->layout.Separation_ItemsX));
+
+                        }
+                        color=list_bx->visual.item_bg_color;
+                        use_color=true;
+                        if(target_item>=list_bx->layout.max_item_show){
+                              color=0;
+                        }
+                        fg_tex=texture_sys->get_texture_fromSprite(fg_sprite_rect,list_bx->visual.icon_sprite);
+                        if(fg_tex!=NULL){
+                            draw_fg=true;
+                            fg_rect.x=rect.x-fg_sprite_rect.w;
+                            fg_rect.y=rect.y;
+                            fg_rect.w=fg_sprite_rect.w;
+                            fg_rect.h=fg_sprite_rect.h;
+                        }
+                     }
+                     else{
+                         color=0;
+                     }
+                     if(header->active_state==UI_ACTIVE_STATE_DISABLED){
+                          bg_color=list_bx->visual.bg_color[1];
+                          color=0;
+                          draw_fg=false;
                      }
                 }
                 break;
@@ -869,8 +964,8 @@ void Render_DrawSystem::draw_UI(textureManager_system* texture_sys,Scene* target
              RenderCommand lbl_command;
              SDL_Rect rect_font;
              SDL_Rect rect_lbl;
-             rect_lbl.x=x+lbl->layout.offsetx;
-             rect_lbl.y=y+lbl->layout.offsety;
+             rect_lbl.x=screen_x+lbl->layout.offsetx;
+             rect_lbl.y=screen_y+lbl->layout.offsety;
              rect_lbl.w=0;
              rect_lbl.h=0;
              Bitmap_Font* font=font_sys->get_font(lbl->visual.font_index);
@@ -957,6 +1052,9 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
    if(font_sys==NULL || lbl==NULL || target_font==NULL ){
       return NULL;
    }
+   if(lbl->layout.label_boxHeight<=0 || lbl->layout.label_boxWidth<=0){
+      return NULL;
+   }
     Rendered_Text* last_text=font_sys->get_Rendered_Text(lbl->visual.texture_label);
     rect.x=0;
     rect.y=0;
@@ -980,6 +1078,7 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
     }
     SDL_Texture* initial_target=SDL_GetRenderTarget(main_render);
     SDL_Texture* new_text_texture=NULL;
+    bool new_texture=false;
     if(lbl->state.has_modify==true && last_text!=NULL){
         new_text_texture=last_text->texture_text;
         lbl->state.has_modify=false;
@@ -987,6 +1086,7 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
     if(new_text_texture==NULL){
         new_text_texture=SDL_CreateTexture(main_render,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,width_box,height_box);
         SDL_SetTextureBlendMode(new_text_texture,SDL_BLENDMODE_BLEND);
+        new_texture=true;
     }
 
     SDL_SetRenderTarget(main_render,new_text_texture);
@@ -1046,13 +1146,102 @@ SDL_Texture* Render_DrawSystem::draw_text(Fonts_System* font_sys,Label*lbl,SDL_R
          last_x=0;
          last_y+=line_h;
     }
-    lbl->visual.texture_label=font_sys->save_text(new_text_texture,width_box,height_box);
+    if(new_texture){
+       lbl->visual.texture_label=font_sys->save_text(new_text_texture,width_box,height_box);
+    }
     rect.w=width_box;
     rect.h=height_box;
     SDL_SetRenderTarget(main_render,initial_target);
     return new_text_texture;
 
 }
+//Draw the Text for ListBox or Combobox
+void Render_DrawSystem::draw_textList(uint16_t first_index,uint16_t last_index,Fonts_System* font_sys,Bitmap_Font* font,SDL_Rect rect_text_first_item,std::vector<std::string> items,std::vector<uint8_t> items_states,std::vector<uint16_t>items_colors,std::vector<uint8_t>& items_textures,int8_t z_index,uint16_t separationX,uint16_t separationY,uint8_t orientation,bool disabled_text){
+
+   if(font==NULL || font_sys==NULL){
+     return;
+   }
+   SDL_Texture* texture_font=font->get_texture();
+   if(texture_font==NULL){
+      return;
+   }
+   SDL_Texture* initial_target=SDL_GetRenderTarget(main_render);
+   for(uint16_t i=first_index;i<last_index;i++){
+      if(i>=items.size()){
+        break;
+      }
+      Rendered_Text* itemText_render=font_sys->get_Rendered_Text(items_textures[i]);
+      RenderCommand cmd;
+      SDL_Rect rect_text;
+      rect_text.w=rect_text_first_item.w;
+      rect_text.h=rect_text_first_item.h;
+      rect_text.x=rect_text_first_item.x;
+      rect_text.y=rect_text_first_item.y;
+      if(orientation==UI_ORIENTATION_HORIZONTAL){
+          rect_text.x+=(i*rect_text_first_item.w)+(i*separationX);
+      }
+      else{
+        rect_text.y+=(i*rect_text_first_item.h)+(i*separationY);
+      }
+      if(itemText_render!=NULL){
+         SDL_Texture* texture_item=itemText_render->texture_text;
+         if(texture_item!=NULL){
+              SDL_Point pt;
+              SDL_Rect rect_texture={0,0,itemText_render->width,itemText_render->height};
+              pt.x=rect_texture.w*0.5;
+              pt.y=rect_texture.h*0.5;
+              cmd.angle=0;
+              cmd.use_color=true;
+              cmd.color=(disabled_text==false)?items_colors[items_states[i]]:items_colors[UI_STATE_DISABLED];
+              cmd.tex_id=texture_item;
+              cmd.rect_world=rect_text;
+              cmd.rect_sprite=rect_texture;
+              cmd.z_index=z_index;
+              cmd.render_border=RENDER_BORDER_NONE;
+              cmd.flipped=false;
+              cmd.pivot=pt;
+              render_queue.push_back(cmd);
+              continue;
+         }
+      }
+      SDL_Texture* text_texture=SDL_CreateTexture(main_render,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,rect_text_first_item.w,rect_text_first_item.h);
+      SDL_SetTextureBlendMode(text_texture,SDL_BLENDMODE_BLEND);
+      SDL_SetRenderTarget(main_render,text_texture);
+      std::string text=items[i];
+      uint16_t posChar_X=0;
+
+      for(uint8_t i=0;i<text.length();i++){
+         char c=text[i];
+         Glyph* temp_glyph=font->get_letter(c,FONT_VARIANT_NORMAL);
+         if(temp_glyph==NULL){
+             continue;
+         }
+         SDL_Rect glyph_rect={temp_glyph->x,temp_glyph->y,temp_glyph->w,temp_glyph->h};
+         SDL_Rect char_rect={posChar_X,0,glyph_rect.w,glyph_rect.h};
+         SDL_RenderCopy(main_render,texture_font,&glyph_rect,&char_rect);
+         posChar_X+=temp_glyph->w;
+      }
+      items_textures[i]=font_sys->save_text(text_texture,rect_text.w,rect_text.h);
+      SDL_SetRenderTarget(main_render,initial_target);
+      SDL_Point pt;
+      SDL_Rect rect_texture={0,0,rect_text.w,rect_text.h};
+      pt.x=rect_texture.w*0.5;
+      pt.y=rect_texture.h*0.5;
+      cmd.angle=0;
+      cmd.rect_world=rect_text;
+      cmd.rect_sprite= rect_texture;
+      cmd.color=(disabled_text==false)?items_colors[items_states[i]]:items_colors[UI_STATE_DISABLED];
+      cmd.use_color=true;
+      cmd.z_index=z_index;
+      cmd.tex_id=text_texture;
+      cmd.pivot=pt;
+      cmd.flipped=false;
+      cmd.render_border=RENDER_BORDER_NONE;
+      render_queue.push_back(cmd);
+   }
+   SDL_SetRenderTarget(main_render,initial_target);
+}
+
 
 //draw the Extremes of ValueBars
 void Render_DrawSystem::draw_extrem_ValueBar(SDL_Texture* tex,SDL_Rect world_rect,SDL_Rect sprite_rect,int8_t z_index){

@@ -227,11 +227,11 @@ std::vector<int16_t> Input_System::get_mouseMove(){
 }
 
 //Get the Scan Key Code from the Action of Player
-uint16_t Input_System::get_PlayerKey(uint8_t action_player){
-   if(action_player>=KEY_COUNT-1){
+uint16_t Input_System::get_ActionKey(uint8_t action_id){
+   if(action_id>=KEY_COUNT-1){
       return key_states.size();
    }
-   return action_keys[action_player];
+   return action_keys[action_id];
 }
 
 //Get the Input Drive

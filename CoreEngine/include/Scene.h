@@ -81,6 +81,7 @@ struct Scene{
         std::vector<std::bitset<64>> components_masks;
         std::vector<std::string> list_scenes;
         std::vector<Entity_TreeData> entities_quatree_dat;
+        std::vector<uint16_t> ui_entities;
         int16_t last_entity;
         float threshold_updateQuatree_Entity;
         bool entities_changes_transform;

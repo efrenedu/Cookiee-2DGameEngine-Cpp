@@ -87,8 +87,10 @@ struct Render_DrawSystem
       void draw_spriteComposer(Scene* target_scene,textureManager_system* texture_sys,uint16_t index_entity,int8_t z_index,float centerX,float centerY,float angle,float initial_angle,bool flipped);
       bool draw_Valuebar_Sprites(SDL_Rect bg_rect,SDL_Rect bar_rect,textureManager_system* texture_sys,int8_t z_index,ValueBar* bar,UI_System* ui_sys);
       void draw_extrem_ValueBar(SDL_Texture* tex,SDL_Rect world_rect,SDL_Rect sprite_rect,int8_t z_index);
+      void draw_textList(uint16_t first_index,uint16_t last_index,Fonts_System* font_sys,Bitmap_Font* font,SDL_Rect rect_text,std::vector<std::string> items,std::vector<uint8_t> items_states,std::vector<uint16_t>items_colors,std::vector<uint8_t>& items_textures,int8_t z_index,uint16_t separationX,uint16_t separationY,uint8_t orientation=UI_ORIENTATION_VERTICAL,bool disabled_text=false);
 
       SDL_Texture* draw_text(Fonts_System* font_sys,Label*lbl,SDL_Rect& rect,Bitmap_Font* target_font);
+
       SDL_Renderer* main_render;
       SDL_Renderer* splash_render;
       SDL_Window* main_win;

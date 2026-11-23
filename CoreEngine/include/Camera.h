@@ -20,7 +20,7 @@ struct Camera2D{
     float getBottom();
     float getTop();
     std::vector<float> WorlPos_To_ScreenPos(float x_world,float y_world);
-
+    std::vector<uint16_t> get_viewPort_Size();
     std::vector<uint16_t> get_NearEntities();
 
   private:

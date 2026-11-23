@@ -6,6 +6,7 @@
 #include<Physic_Engine.h>
 #include<Game_Config.h>
 #include<Render_DrawSystem.h>
+#include<Screen.h>
 
 struct EngineContext
 {
@@ -23,6 +24,7 @@ struct EngineContext
         Input_System& get_input();
         Game_Config_System& get_config();
         Render_DrawSystem& get_drawContext();
+        Screen_System& get_screen();
     private:
         static EngineContext* instance;
         UI_event_System ui_event;
@@ -30,6 +32,7 @@ struct EngineContext
         Physic_Engine_System physic_sys;
         Input_System input_sys;
         Render_DrawSystem draw_sys;
+        Screen_System screen_sys;
         bool pause_game;
         bool finish_game;
         uint8_t scene_index;

@@ -1,6 +1,6 @@
 #include "Camera.h"
 #include<Scene.h>
-
+#include<EngineContext.h>
 
 //Init the Camer
 void Camera2D::Init(float pos_x,float pos_y,uint16_t w_view,uint16_t h_view,uint16_t target,float offset_targt_x,float offset_targt_y){
@@ -119,4 +119,11 @@ std::vector<float> Camera2D::WorlPos_To_ScreenPos(float x_world,float y_world){
 //Get the List of Entities Id Near to Camera
 std::vector<uint16_t> Camera2D::get_NearEntities(){
    return near_entities;
+}
+
+
+//Get the ViewPort SizeofResource
+std::vector<uint16_t> Camera2D::get_viewPort_Size(){
+   std::vector<uint16_t> res={width_viewport,height_viewport};
+   return res;
 }

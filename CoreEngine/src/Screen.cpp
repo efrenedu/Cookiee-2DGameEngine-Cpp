@@ -9,6 +9,9 @@ void Screen_System::Init(){
    full_screenX=0;
    full_screenY=0;
    On_fullScreen=false;
+   int32_t h_win,w_win;
+   bool size_found=false;
+   SDL_GetWindowSize(EngineContext::get().get_drawContext().get_win(),&w_win,&h_win);
    uint16_t Count{SDL_GetNumDisplayModes(0)};
    SDL_DisplayMode Mode;
    SDL_DisplayMode desktop_Mode;
@@ -18,15 +21,22 @@ void Screen_System::Init(){
    for (uint16_t i{0}; i<Count; ++i) {
         SDL_GetDisplayMode(0, i, &Mode);
         if(Mode.w<desktop_Mode.w && Mode.h<desktop_Mode.h){
+            if(Mode.w==w_win && Mode.h==h_win && size_found==false){
+               selected_size=list_modes.size();
+               size_found=true;
+            }
             list_modes.push_back(Mode);
         }
         else if(Mode.w==desktop_Mode.w && Mode.h==desktop_Mode.h){
             full_screenX=Mode.w;
             full_screenY=Mode.h;
         }
+
    }
 
+
 }
+
 
 //Set the Size of Screen
 void Screen_System::set_size(int8_t target){
